@@ -11,9 +11,11 @@ python3 -m http.server 4173 --directory dist
 Open http://localhost:4173. All libraries are vendored; no package installation or build is required.
 
 - Tap a face to attach a cube; Erase removes a cube and its descendant branch.
+- Mirror X/Y/Z switches stay available in every mode. Build mirrors placement onto existing opposite surfaces, and mirrors moving, resizing, and erasing matching cubes. The same switches control Paint mirroring.
 - Drag empty space to orbit. Use Orbit to rotate from anywhere. Pinch to zoom and use two fingers to pan. On desktop, scroll to zoom and right-drag to pan.
 - Use the arrow tool to select a cube. Drag it along its connected face, or drag its corner handles to resize it. Attached branches and all saved keyframes follow the new size and joint pivots. The root slides along the ground plane.
 - Tap a joint dot in arrow or Animate mode to choose Omni, X, Y, or Z rotation in the parent cube’s local axes. Axis changes constrain existing keyframes as well as physical dragging.
+- A 3D line shows the chosen joint rotation axis; Omni shows all three. The floor is transparent while the grid remains visible.
 - Paint with a raycast brush or fill one face. Toggle X, Y, and Z mirroring separately or together; the mirror planes cross the root cube’s center and paint matching existing surfaces, including hidden faces. All faces occupy separate cells of a single 2048×2048 atlas.
 - In Animate, tap a cube to pin/unpin it. Drag an unpinned cube to pose the connected rig. Add a keyframe to duplicate the pose, then drag to edit it. Frame edits save when the drag ends.
 - Tap a keyframe, choose Copy, then tap a destination keyframe and Paste. Paste replaces the destination pose and preserves its time.
@@ -34,9 +36,12 @@ Mobile UI checks at 390×844 and 320×740 cover building, brush painting, fill, 
 
 ```sh
 node tests/model-ops.test.mjs
+node tests/pointer-input.test.mjs
 python3 tests/check-export.py /path/to/cube-model.zip
 ```
 
 The expanded controls were checked at 390×844 and 320×740. Tests cover resize/slide with connected branches and existing poses, local X/Y/Z hinge projection, combined mirror reflections, keyframe copy/paste and undo, version 1/2 project import, and sized mesh/rig exports. An actual exported atlas was inspected to confirm matching brush paint on hidden opposite faces.
 
 Actual Roblox Studio import, asset uploads, animation publication, and live-game playback have not been tested.
+
+Pointer lifecycle regressions cover stale touches, interrupted captures, release outside the canvas, two-finger to single-finger transitions, and toolbar recovery. Portrait browser checks confirm persistent mirror toggles, mirrored placement, visible axis guides, and pose dragging. Physical phone touch testing remains outstanding.

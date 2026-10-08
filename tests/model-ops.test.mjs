@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from '../dist/vendor/three.module.js';
-import {normalizeModel,editShape,projectPose,constrainedRelative,mirroredSamples,pastePose} from '../dist/model-ops.js';
+import {normalizeModel,editShape,projectPose,constrainedRelative,mirroredSamples,pastePose,mirrorPartners,editMirroredShape} from '../dist/model-ops.js';
 const Q=a=>new THREE.Quaternion(...a),V=a=>new THREE.Vector3(...a);
 const base=normalizeModel({nextId:3,frame:0,boxes:[{id:0,parent:null,p:[0,.5,0],q:[0,0,0,1],a:null,b:null},{id:1,parent:0,p:[0,1.5,0],q:[0,0,0,1],a:[0,.5,0],b:[0,-.5,0]},{id:2,parent:1,p:[1,1.5,0],q:[0,0,0,1],a:[.5,0,0],b:[-.5,0,0]}],frames:[]});
 const rest=Object.fromEntries(base.boxes.map(b=>[b.id,{p:b.p.slice(),q:b.q.slice()}]));
@@ -15,3 +15,13 @@ const arbitraryParent={q:new THREE.Quaternion().setFromAxisAngle(new THREE.Vecto
 const origin=new THREE.Vector3(2,3,4),rotation=new THREE.Quaternion(),p=new THREE.Vector3(3,5,7),n=new THREE.Vector3(1,0,0);for(const axis of ['x','y','z']){const all=mirroredSamples(p,n,origin,rotation,{[axis]:true});assert.equal(all.length,2);assert.equal(all[1].point[axis],2*origin[axis]-p[axis]);}const all=mirroredSamples(p,n,origin,rotation,{x:true,y:true,z:true});assert.equal(new Set(all.map(s=>s.point.toArray().join(','))).size,8);
 const pasted=pastePose(base.boxes,rest,base.frames[1].pose);for(const b of base.boxes){assert.ok(V(pasted[b.id].p).distanceTo(V(base.frames[1].pose[b.id].p))<1e-9);assert.ok(Q(pasted[b.id].q).angleTo(Q(base.frames[1].pose[b.id].q))<1e-7);}pasted[1].p[0]=999;assert.notEqual(base.frames[1].pose[1].p[0],999,'clipboard remains independent');assert.deepEqual(base.boxes[1].size,[1,1,1],'drag-start snapshot is unchanged');
 console.log('PASS: surface sliding/clamping, resizing with descendants, all-frame connectivity, root resize, X/Y/Z rotation projection, all mirror combinations, and independent keyframe paste.');
+const symmetric=normalizeModel({boxes:[structuredClone(base.boxes[0]),{id:1,parent:0,p:[1,.5,0],q:[0,0,0,1],a:[.5,0,0],b:[-.5,0,0],normal:[1,0,0]},{id:2,parent:0,p:[-1,.5,0],q:[0,0,0,1],a:[-.5,0,0],b:[.5,0,0],normal:[-1,0,0]}],frames:[]});
+symmetric.frames=[{time:0,pose:Object.fromEntries(symmetric.boxes.map(b=>[b.id,{p:b.p.slice(),q:b.q.slice()}]))}];
+assert.deepEqual(mirrorPartners(symmetric.boxes,1,{x:true}),[{id:2,signs:[-1,1,1]}]);
+assert.deepEqual(mirrorPartners(symmetric.boxes,1,{y:true}),[],'self-reflections do not duplicate edits');
+const mirrorEdit=editMirroredShape(symmetric,1,[1.5,.75,.25],[2,1,1],{x:true});
+assert.deepEqual(mirrorEdit.boxes[1].p,[1.5,.75,.25]);
+assert.deepEqual(mirrorEdit.boxes[2].p,[-1.5,.75,.25]);
+assert.deepEqual(mirrorEdit.boxes[2].size,[2,1,1]);checkJoints(mirrorEdit);
+assert.deepEqual(symmetric.boxes[2].size,[1,1,1],'mirrored edit preserves undo snapshot');
+console.log('PASS: mirrored slide/resize preserves symmetry, undo snapshots, and every keyframe joint.');
