@@ -9,7 +9,7 @@ with zipfile.ZipFile(path) as z:
     png=z.read('meshes/atlas.png')
     assert png[:8] == b'\x89PNG\r\n\x1a\n'
     resolution=s.get('textureSize',2048)
-    assert resolution in (512,1024,2048,4096)
+    assert resolution in (256,512,1024)
     assert struct.unpack('>II',png[16:24]) == (resolution,resolution)
     for b in s['boxes']:
         obj=z.read(f"meshes/Cube_{b['id']}.obj").decode()

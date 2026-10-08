@@ -13,13 +13,13 @@ Open http://localhost:4173. All libraries are vendored; no package installation 
 - Tap a face to attach a cube; Erase removes a cube and its descendant branch.
 - Mirror X/Y/Z switches stay available in every mode. Build mirrors placement onto existing opposite surfaces, and mirrors moving, resizing, and erasing matching cubes. The same switches control Paint mirroring.
 - Drag empty space to orbit. Use Orbit to rotate from anywhere. Pinch to zoom and use two fingers to pan. On desktop, scroll to zoom and right-drag to pan.
-- Use the arrow tool to select a cube. Drag it along its connected face, or drag its corner handles to resize it. Attached branches and all saved keyframes follow the new size and joint pivots. The root slides along the ground plane. Block sliding, joint sliding, and resizing use 0.05-stud increments. Drag a joint dot with the arrow tool to reposition its pivot within the contacting faces without moving the rest blocks.
+- Use the arrow tool to select a cube. Drag it along its connected face, or drag its corner handles to resize it. Attached branches and all saved keyframes follow the new size and joint pivots. The root slides along the ground plane. Build’s Grid control sets placement, block sliding, joint sliding, and resizing to None, 0.05, 0.1, 0.2, or 0.25 studs. None disables snapping and hides the floor grid. Drag a joint dot with the arrow tool to reposition its pivot within the contacting faces without moving the rest blocks.
 - Tap a joint dot in arrow or Animate mode to choose Omni, X, Y, or Z rotation in the parent cube’s local axes. Axis changes constrain existing keyframes as well as physical dragging.
 - A 3D line shows the chosen joint rotation axis; Omni shows all three. The floor is transparent while the grid remains visible.
-- Paint with a raycast brush or fill one face. Toggle X, Y, and Z mirroring separately or together; the mirror planes cross the root cube’s center and paint matching existing surfaces, including hidden faces. All faces occupy separate cells of a single shared atlas. Paint’s Texture control sets its resolution to 512, 1024, 2048, or 4096 pixels square. Resizing preserves paint and supports undo; project and bundle exports retain the chosen resolution.
+- Paint with a raycast brush or fill one face. Toggle X, Y, and Z mirroring separately or together; the mirror planes cross the root cube’s center and paint matching existing surfaces, including hidden faces. All faces occupy separate cells of a single shared atlas. Paint’s Texture control sets its resolution to 256, 512, or 1024 pixels square. Resizing preserves paint and supports undo; project and bundle exports retain the chosen resolution.
 - In Animate, tap a cube to pin/unpin it. Drag an unpinned cube to pose the connected rig. Add a keyframe to duplicate the pose, then drag to edit it. Frame edits save when the drag ends. Parts do not collide, and joint endpoints are projected into exact alignment on every simulation frame.
 - Tap a keyframe, choose Copy, then tap a destination keyframe and Paste. Paste replaces the destination pose and preserves its time.
-- Undo/redo covers topology, moving, resizing, painting, joint axes, pins, keyframes, paste, and project import. Save an editable .cube project before closing the page; projects are not automatically stored.
+- Undo/redo covers topology, moving, resizing, painting, joint axes, pins, keyframes, paste, and project import. The current project, atlas, keyframes, grid, and mode save automatically to localStorage and restore on page load. Undo history is session-only. The folder menu still saves portable .cube copies.
 - Export creates a ZIP with model.rbxmx, a shared PNG atlas, local-space OBJ meshes, the editable project, and import instructions. Roblox asset uploading and in-game testing remain a later step.
 
 ## Implementation
@@ -38,6 +38,7 @@ Mobile UI checks at 390×844 and 320×740 cover building, brush painting, fill, 
 node tests/model-ops.test.mjs
 node tests/pointer-input.test.mjs
 node tests/rig-editing.test.mjs
+node tests/settings-save.test.mjs
 python3 tests/check-export.py /path/to/cube-model.zip
 ```
 
@@ -47,4 +48,8 @@ Actual Roblox Studio import, asset uploads, animation publication, and live-game
 
 Pointer lifecycle regressions cover stale touches, interrupted captures, release outside the canvas, two-finger to single-finger transitions, and toolbar recovery. Portrait browser checks confirm persistent mirror toggles, mirrored placement, visible axis guides, and pose dragging. Physical phone touch testing remains outstanding.
 
-Rig regressions exercise 960 drag frames across Omni/X/Y/Z constraints, checking coincident joint endpoints and zero collision contacts on every frame. Snapped movement, joint overlap bounds, and edited pivot preservation are covered. A 4096-pixel texture was painted, resized with undo, exported, validated, and reopened in the portrait UI. Texture undo history has a 128 MiB budget (always retaining the newest action).
+Rig regressions exercise 960 drag frames across Omni/X/Y/Z constraints, checking coincident joint endpoints and zero collision contacts on every frame. Snapped movement, joint overlap bounds, and edited pivot preservation are covered. Legacy 2048/4096-pixel projects load with their atlas downsampled to the new 1024 maximum. Texture undo history has a 128 MiB budget (always retaining the newest action).
+
+Paint’s Texture button switches between the 3D model and its shared atlas. Direct atlas painting shares the same brush, fill, mirroring, and undo operations. Pinch/scroll to zoom and enable Orbit to pan the atlas; Fit frames its occupied faces. Body damping, relative joint angular damping, and a smoothed grab target add resistance during posing.
+
+Autosave is debounced by 250 ms and flushes after active gestures when the page hides. Storage failures show a save-copy message and retain the last complete stored project. Checks cover all grid values, local-save debounce/failure recovery, browser reloads with painted/posed projects, a 256-pixel bundle export, and legacy texture downsampling.
