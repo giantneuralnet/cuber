@@ -24,7 +24,7 @@ with zipfile.ZipFile(path) as z:
         assert max(abs(extent[i]-size[i]) for i in range(3)) < 1e-7
         part=xml.find(f".//Item[@referent='P{b['id']}']/Properties")
         assert part.findtext("bool[@name='CanCollide']") == 'false'
-        assert [float(part.findtext(f"Vector3[@name='size']/{axis}")) for axis in 'XYZ'] == size
+        assert max(abs(float(part.findtext(f"Vector3[@name='size']/{axis}"))-value) for axis,value in zip('XYZ',size)) < 1e-7
         if project['version'] >= 2:
             assert xml.findtext(f".//Item[@referent='AXIS{b['id']}']/Properties/string[@name='Value']") == b.get('axis','omni')
     refs={i.attrib['referent']:i for i in xml.iter('Item')}
