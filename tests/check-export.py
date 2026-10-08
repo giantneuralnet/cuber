@@ -16,6 +16,14 @@ with zipfile.ZipFile(path) as z:
         assert sum(l.startswith('f ') for l in obj.splitlines()) == 12
         for l in obj.splitlines():
             if l.startswith('vt '): assert all(0 <= float(v) <= 1 for v in l.split()[1:])
+        vertices=[list(map(float,l.split()[1:])) for l in obj.splitlines() if l.startswith('v ')]
+        size=b.get('size',[1,1,1])
+        extent=[max(v[i] for v in vertices)-min(v[i] for v in vertices) for i in range(3)]
+        assert max(abs(extent[i]-size[i]) for i in range(3)) < 1e-7
+        part=xml.find(f".//Item[@referent='P{b['id']}']/Properties")
+        assert [float(part.findtext(f"Vector3[@name='size']/{axis}")) for axis in 'XYZ'] == size
+        if project['version'] >= 2:
+            assert xml.findtext(f".//Item[@referent='AXIS{b['id']}']/Properties/string[@name='Value']") == b.get('axis','omni')
     refs={i.attrib['referent']:i for i in xml.iter('Item')}
     assert len(refs)==len(list(xml.iter('Item')))
     for r in xml.iter('Ref'): assert r.text in refs or r.text in ('null','nil')
@@ -43,5 +51,4 @@ with zipfile.ZipFile(path) as z:
             got=mul(mul(mul(parent,c0),p),inv(c1));want=world(f['pose'][str(b['id'])])
             errors.append(max(abs(got[r][c]-want[r][c]) for r in range(4) for c in range(4)))
     assert max(errors,default=0) < 1e-6, errors
-    open('/tmp/cube-studio-qa/model.cube','wb').write(z.read('model.cube'))
-    print(f"PASS: {len(s['boxes'])} cubes, {len(motors)} Motor6Ds, {len(keys)} keyframes; valid archive, atlas, UVs and references; pose reconstruction error {max(errors,default=0):.2g}")
+    print(f"PASS: {len(s['boxes'])} cubes, {len(motors)} Motor6Ds, {len(keys)} keyframes; valid archive, atlas, UVs, sizes, axes and references; pose reconstruction error {max(errors,default=0):.2g}")
