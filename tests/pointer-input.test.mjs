@@ -20,6 +20,7 @@ send(canvas,'pointerdown',1,100,100);send(canvas,'pointerdown',2,200,100);root.d
 send(canvas,'pointerdown',1);send(canvas,'pointerdown',2);root.dispatchEvent(event('pointerdown',3,0,0,{target:{closest:()=>({})}}));assert.equal(input.registry.points.size,0);assert.equal(canvas.captured.size,0);
 // Unknown pointer-up events must not terminate a different active gesture.
 send(canvas,'pointerdown',1);let count=calls.length;send(root,'pointerup',99);assert.equal(calls.length,count);send(canvas,'pointermove',1,140,140);assert.deepEqual(calls.at(-1),['move',1]);
+for(const type of ['touchstart','touchmove']){const touch=new Event(type,{cancelable:true});canvas.dispatchEvent(touch);assert.equal(touch.defaultPrevented,true,'canvas suppresses native long-press handling');}
 root.dispatchEvent(new Event('blur'));assert.equal(input.registry.points.size,0);input.dispose();
 const registry=new PointerRegistry();registry.down(event('pointerdown',1));assert.equal(registry.metrics(),null);
 console.log('PASS: pinch-to-single recovery, fresh primary touch cleanup, outside release, pointer cancellation, capture loss, physical touch reconciliation, toolbar reset, and unrelated pointer events.');

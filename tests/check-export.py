@@ -33,7 +33,9 @@ with zipfile.ZipFile(path) as z:
     motors=xml.findall('.//Item[@class="Motor6D"]')
     assert len(motors)==len(s['boxes']) # Includes RigRoot -> first cube
     keys=xml.findall('.//Item[@class="Keyframe"]')
-    assert len(keys)==max(1,len(s['frames']))
+    animations=s.get('animations',[{'frames':s.get('frames',[])}])
+    assert len(xml.findall('.//Item[@class="KeyframeSequence"]')) == len(animations)
+    assert len(keys)==sum(max(1,len(a['frames'])) for a in animations)
     def mul(a,b): return [[sum(a[r][k]*b[k][c] for k in range(4)) for c in range(4)] for r in range(4)]
     def inv(m):
         a=[[m[c][r] for c in range(3)]+[0] for r in range(3)]+[[0,0,0,1]]
@@ -45,11 +47,12 @@ with zipfile.ZipFile(path) as z:
         x,y,z,w=p['q'];px,py,pz=p['p']
         return [[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w),px],[2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w),py],[2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y),pz],[0,0,0,1]]
     errors=[]
-    for i,f in enumerate(s['frames']):
+    for track,animation in enumerate(animations):
+      for i,f in enumerate(animation['frames']):
         for b in s['boxes']:
             props=refs[f"M{b['id']}"] .find('Properties')
             c0=cf(props.find("CoordinateFrame[@name='C0']"));c1=cf(props.find("CoordinateFrame[@name='C1']"))
-            p=cf(refs[f"F{i}P{b['id']}"] .find("Properties/CoordinateFrame[@name='CFrame']"))
+            p=cf(refs[f"FA{track}K{i}P{b['id']}"] .find("Properties/CoordinateFrame[@name='CFrame']"))
             parent=world(s['boxes'][0]) if b['parent'] is None else world(f['pose'][str(b['parent'])])
             got=mul(mul(mul(parent,c0),p),inv(c1));want=world(f['pose'][str(b['id'])])
             errors.append(max(abs(got[r][c]-want[r][c]) for r in range(4) for c in range(4)))
