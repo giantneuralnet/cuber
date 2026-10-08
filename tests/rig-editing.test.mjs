@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import * as T from '../dist/vendor/three.module.js';
+import * as C from '../dist/vendor/cannon-es.js';
+import {normalizeModel,slidePosition,editShape,editJoint,projectPose,connectedPose,EDIT_STEP} from '../dist/model-ops.js';
+import {createRigPhysics,stepRigPhysics} from '../dist/rig-physics.js';
+const V=a=>new T.Vector3(...a),Q=a=>new T.Quaternion(...a);
+const state=normalizeModel({boxes:[{id:0,parent:null,p:[0,0,0],q:[0,0,0,1],anchor:true,size:[1,1,1]},{id:1,parent:0,p:[0,1,0],q:[0,0,0,1],a:[0,.5,0],b:[0,-.5,0],normal:[0,1,0],anchor:false},{id:2,parent:1,p:[0,2,0],q:[0,0,0,1],a:[0,.5,0],b:[0,-.5,0],normal:[0,1,0],anchor:false}],frames:[]});
+const rest=Object.fromEntries(state.boxes.map(b=>[b.id,{p:b.p.slice(),q:b.q.slice()}]));state.frames=[{time:0,pose:rest}];
+function check(boxes,pose){for(const b of boxes)if(b.parent!==null){const p=pose[b.parent],c=pose[b.id];assert.ok(V(p.p).add(V(b.a).applyQuaternion(Q(p.q))).distanceTo(V(c.p).add(V(b.b).applyQuaternion(Q(c.q))))<1e-9,'every rendered pivot coincides');}}
+const slide=slidePosition(state,1,[.123,99,-.167]);assert.ok(V(slide).distanceTo(V([.1,1,-.15]))<1e-9);const edge=slidePosition(state,1,[99,1,-99]);assert.deepEqual(edge,[.5,1,-.5]);
+const odd=structuredClone(state);odd.boxes[0].size=[1.05,1,1.05];assert.deepEqual(slidePosition(odd,1,[99,1,-99]),[.5,1,-.5],'edge clamp stays on the same step grid');
+const pivot=editJoint(state,1,[.127,.5,-.172]);assert.ok(V(pivot.boxes[1].a).distanceTo(V([.15,.5,-.15]))<1e-9);assert.ok(V(pivot.boxes[1].b).distanceTo(V([.15,-.5,-.15]))<1e-9);assert.deepEqual(pivot.boxes.map(b=>b.p),state.boxes.map(b=>b.p),'joint dragging does not move rest blocks');check(pivot.boxes,pivot.frames[0].pose);
+const moved=editShape(pivot,1,slidePosition(pivot,1,[.1,1,0]),[1,1,1]);assert.deepEqual(moved.boxes[1].b,pivot.boxes[1].b,'block sliding retains edited pivot');check(moved.boxes,moved.frames[0].pose);
+const limited=structuredClone(state);limited.boxes[1].p=[.4,1,0];limited.boxes[1].a=[.4,.5,0];const bounded=editJoint(limited,1,[-99,.5,99]);assert.ok(bounded.boxes[1].a[0]>=-.1-1e-9);assert.ok(bounded.boxes[1].b.every(v=>Math.abs(v)<=.5+1e-9));
+for(const axis of ['omni','x','y','z']){const boxes=structuredClone(state.boxes);boxes[1].axis=axis;const {world,bodies}=createRigPhysics(boxes,rest);for(const b of bodies.values()){assert.equal(b.collisionFilterMask,0);assert.equal(b.collisionResponse,false);}const grab=new C.Body({mass:0,type:C.Body.KINEMATIC,collisionFilterGroup:0,collisionFilterMask:0});grab.position.set(0,2,0);world.addBody(grab);world.addConstraint(new C.PointToPointConstraint(bodies.get(2),new C.Vec3(.2,.2,.2),grab,new C.Vec3(),700));let last;for(let i=0;i<240;i++){grab.position.set(Math.sin(i*.05)*4,Math.cos(i*.07)*3,Math.sin(i*.03)*3);last=stepRigPhysics(boxes,world,bodies,1/60);check(boxes,last);assert.equal(world.contacts.length,0,'overlapping parts never generate contacts');assert.deepEqual(last[0].p,rest[0].p);}assert.ok(Q(last[2].q).angleTo(Q(rest[2].q))>.05,'rig responds to dragging');}
+const nonRoot=structuredClone(state.boxes);nonRoot[0].anchor=false;nonRoot[2].anchor=true;const stretched=structuredClone(rest);stretched[0].p=[9,5,6];const fixed=connectedPose(nonRoot,stretched);check(nonRoot,fixed);assert.deepEqual(fixed[2],rest[2],'non-root anchor stays fixed');
+console.log('PASS: snapped block and joint sliding, overlap bounds, edited pivots preserved, 960 live physics frames stay connected, all parts non-colliding, and non-root anchors.');

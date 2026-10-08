@@ -8,7 +8,9 @@ with zipfile.ZipFile(path) as z:
     xml=ET.fromstring(z.read('model.rbxmx'))
     png=z.read('meshes/atlas.png')
     assert png[:8] == b'\x89PNG\r\n\x1a\n'
-    assert struct.unpack('>II',png[16:24]) == (2048,2048)
+    resolution=s.get('textureSize',2048)
+    assert resolution in (512,1024,2048,4096)
+    assert struct.unpack('>II',png[16:24]) == (resolution,resolution)
     for b in s['boxes']:
         obj=z.read(f"meshes/Cube_{b['id']}.obj").decode()
         assert sum(l.startswith('v ') for l in obj.splitlines()) == 24
@@ -21,6 +23,7 @@ with zipfile.ZipFile(path) as z:
         extent=[max(v[i] for v in vertices)-min(v[i] for v in vertices) for i in range(3)]
         assert max(abs(extent[i]-size[i]) for i in range(3)) < 1e-7
         part=xml.find(f".//Item[@referent='P{b['id']}']/Properties")
+        assert part.findtext("bool[@name='CanCollide']") == 'false'
         assert [float(part.findtext(f"Vector3[@name='size']/{axis}")) for axis in 'XYZ'] == size
         if project['version'] >= 2:
             assert xml.findtext(f".//Item[@referent='AXIS{b['id']}']/Properties/string[@name='Value']") == b.get('axis','omni')
