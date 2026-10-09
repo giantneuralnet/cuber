@@ -45,8 +45,20 @@ with zipfile.ZipFile(path) as z:
         return [[float(e.findtext(f'R{r}{c}')) for c in range(3)]+[float(e.findtext('XYZ'[r]))] for r in range(3)]+[[0,0,0,1]]
     def world(p):
         x,y,z,w=p['q'];px,py,pz=p['p']
-        return [[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w),px],[2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w),py],[2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y),pz],[0,0,0,1]]
+        m=[[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w),px],[2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w),py],[2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y),pz],[0,0,0,1]]
+        # Proper Y half-turn: front +Z -> Roblox -Z, with no X/Z swap.
+        signs=[-1,1,-1,1]
+        return [[m[r][c]*signs[r]*signs[c] for c in range(4)] for r in range(4)]
     errors=[]
+    for b in s['boxes']:
+        props=refs[f"M{b['id']}"].find('Properties')
+        c0=cf(props.find("CoordinateFrame[@name='C0']"));c1=cf(props.find("CoordinateFrame[@name='C1']"))
+        parent=s['boxes'][0] if b['parent'] is None else next(p for p in s['boxes'] if p['id']==b['parent'])
+        got=mul(mul(world(parent),c0),inv(c1));want=world(b)
+        assert max(abs(got[r][c]-want[r][c]) for r in range(4) for c in range(4)) < 1e-6, 'bind frames must preserve rest pose'
+        part=cf(refs[f"P{b['id']}"].find("Properties/CoordinateFrame[@name='CFrame']"))
+        assert max(abs(part[r][c]-want[r][c]) for r in range(4) for c in range(4)) < 1e-6
+
     for track,animation in enumerate(animations):
       for i,f in enumerate(animation['frames']):
         for b in s['boxes']:
