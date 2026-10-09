@@ -3,48 +3,82 @@ import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
 import {validateLayout} from './atlas-layout.js';
 import {zipSync,strToU8} from './vendor/fflate.js';
 
-const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-const n=x=>Math.abs(x)<1e-9?'0':Number(x.toFixed(8)).toString();
 const matrix=p=>new THREE.Matrix4().compose(new THREE.Vector3(...p.p),new THREE.Quaternion(...p.q),new THREE.Vector3(1,1,1));
-const translation=a=>new THREE.Matrix4().makeTranslation(...a);
-// Authoring front is +Z. Roblox front/LookVector is -Z. Rotate the entire
-// coordinate basis 180 degrees about Y (determinant +1), never swap X and Z.
-// Apply to both sides of every transform and to local mesh vertices/normals.
-const ROBLOX_BASIS=new THREE.Matrix4().makeScale(-1,1,-1);
-const robloxFrame=m=>ROBLOX_BASIS.clone().multiply(m).multiply(ROBLOX_BASIS);
-function jointFrames(child,parent){
-  const c0=translation(child.a);
-  // Align both joint frames in the rest pose, even for rotated rest parts.
-  // This leaves the joint axes in the parent's local frame and makes the
-  // rest Transform identity: Part0 * C0 = Part1 * C1.
+// A proper Y half-turn maps the editor's +Z front to Roblox's -Z front.
+// All exported transforms AND local geometry use this same basis, once.
+const basis=new THREE.Matrix4().makeScale(-1,1,-1);
+const vector=(x,y,z)=>[-x,y,-z];
+function transform(m){
+  const p=new THREE.Vector3(),q=new THREE.Quaternion(),scale=new THREE.Vector3();
+  basis.clone().multiply(m).multiply(basis).decompose(p,q,scale);
+  return {position:p.toArray(),rotation:q.normalize().toArray()};
+}
+function bindFrames(child,parent){
+  const c0=new THREE.Matrix4().makeTranslation(...child.a);
   const c1=matrix(child).invert().multiply(matrix(parent)).multiply(c0);
   return {c0,c1};
 }
-const cf=(name,m=new THREE.Matrix4())=>{const e=robloxFrame(m).elements;return `<CoordinateFrame name="${name}"><X>${n(e[12])}</X><Y>${n(e[13])}</Y><Z>${n(e[14])}</Z>${[0,1,2].map(r=>[0,1,2].map(c=>`<R${r}${c}>${n(e[c*4+r])}</R${r}${c}>`).join('')).join('')}</CoordinateFrame>`;};
-const prop=(tag,name,v)=>`<${tag} name="${name}">${v}</${tag}>`;
-const item=(type,ref,properties,children='')=>`<Item class="${type}" referent="${ref}"><Properties>${properties}</Properties>${children}</Item>`;
-const name=s=>prop('string','Name',escape(s));
-function motor(id,parent,c0=new THREE.Matrix4(),c1=new THREE.Matrix4()){return item('Motor6D',`M${id}`,name(`Joint_${id}`)+prop('Ref','Part0',parent)+prop('Ref','Part1',`P${id}`)+cf('C0',c0)+cf('C1',c1));}
-export function robloxXML(state){const root=state.boxes.find(b=>b.parent===null),rootCF=matrix(root),byId=new Map(state.boxes.map(b=>[b.id,b])),jointsById=new Map(state.boxes.filter(b=>b.parent!==null).map(b=>[b.id,jointFrames(b,byId.get(b.parent))]));let parts='';
-parts+=item('Part','RIGROOT',name('RigRoot')+cf('CFrame',rootCF)+prop('Vector3','size','<X>0.1</X><Y>0.1</Y><Z>0.1</Z>')+prop('bool','Anchored','true')+prop('bool','CanCollide','false')+prop('bool','CanQuery','false')+prop('bool','CanTouch','false')+prop('float','Transparency','1'),motor(root.id,'RIGROOT'));
-for(const b of state.boxes){const color=new THREE.Color(b.color);const rgb=(255<<24)|((Math.round(color.getHex()>>16&255))<<16)|(color.getHex()&65535);let joints='';for(const child of state.boxes.filter(c=>c.parent===b.id)){const {c0,c1}=jointsById.get(child.id);joints+=motor(child.id,`P${b.id}`,c0,c1);}
-const meta=item('BoolValue',`ANCHOR${b.id}`,name('EditorAnchor')+prop('bool','Value',String(b.anchor)))+item('IntValue',`SLOT${b.id}`,name('AtlasSlot')+prop('int','Value',b.slot))+item('StringValue',`AXIS${b.id}`,name('EditorJointAxis')+prop('string','Value',b.axis||'omni'));
-parts+=item('Part',`P${b.id}`,name(`Cube_${b.id}`)+cf('CFrame',matrix(b))+prop('Vector3','size',dimensions(b).map((v,i)=>`<${'XYZ'[i]}>${n(v)}</${'XYZ'[i]}>`).join(''))+prop('bool','Anchored','false')+prop('bool','CanCollide','false')+prop('bool','Massless','true')+prop('token','shape','1')+prop('token','TopSurface','0')+prop('token','BottomSurface','0')+prop('Color3uint8','Color3uint8',rgb>>>0),joints+meta);}
-const animations=state.animations||[{name:'Animation 1',frames:state.frames||[]}];
-function pose(b,frame,i){const p=frame.pose[b.id]||b;let transform;if(b.parent===null){transform=rootCF.clone().invert().multiply(matrix(p));}else{const parent=frame.pose[b.parent]||byId.get(b.parent),{c0,c1}=jointsById.get(b.id);transform=c0.clone().invert().multiply(matrix(parent).invert()).multiply(matrix(p)).multiply(c1);}return item('Pose',`F${i}P${b.id}`,name(`Cube_${b.id}`)+cf('CFrame',transform)+prop('float','Weight','1')+prop('token','EasingStyle','0')+prop('token','EasingDirection','0'),state.boxes.filter(c=>c.parent===b.id).map(c=>pose(c,frame,i)).join(''));}
-const sequence=animations.map((animation,track)=>{const frames=animation.frames.length?animation.frames:[{time:0,pose:Object.fromEntries(state.boxes.map(b=>[b.id,b]))}];const keyframes=frames.map((f,i)=>{const key=`A${track}K${i}`;return item('Keyframe',key,name(`Keyframe_${i}`)+prop('float','Time',n(f.time)),item('Pose',`F${key}ROOT`,name('RigRoot')+cf('CFrame')+prop('float','Weight','1'),pose(root,f,key)));}).join('');return item('KeyframeSequence',`SEQUENCE${track}`,name(animation.name)+prop('bool','Loop','true')+prop('token','Priority','2'),keyframes);}).join('');
-const controller=item('AnimationController','CONTROLLER',name('AnimationController'),item('Animator','ANIMATOR',name('Animator')));
-return `<?xml version="1.0" encoding="utf-8"?><roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="4"><External>null</External><External>nil</External>${item('Model','MODEL',name('CubeModel')+prop('Ref','PrimaryPart','RIGROOT'),parts+sequence+controller)}</roblox>`;}
-export function meshOBJ(box,geometry){const pos=geometry.attributes.position,uv=geometry.attributes.uv,norm=geometry.attributes.normal,index=geometry.index;let text=`mtllib atlas.mtl\no Cube_${box.id}\nusemtl Atlas\n`;for(let i=0;i<pos.count;i++)text+=`v ${n(-pos.getX(i)*dimensions(box)[0])} ${n(pos.getY(i)*dimensions(box)[1])} ${n(-pos.getZ(i)*dimensions(box)[2])}\n`;for(let i=0;i<uv.count;i++)text+=`vt ${n(uv.getX(i))} ${n(uv.getY(i))}\n`;for(let i=0;i<norm.count;i++)text+=`vn ${n(-norm.getX(i))} ${n(norm.getY(i))} ${n(-norm.getZ(i))}\n`;for(let i=0;i<index.count;i+=3){text+='f '+[0,1,2].map(j=>{const v=index.getX(i+j)+1;return `${v}/${v}/${v}`;}).join(' ')+'\n';}return text;}
+function meshData(box,geometry){
+  const p=geometry.attributes.position,n=geometry.attributes.normal,uv=geometry.attributes.uv,size=dimensions(box);
+  return {
+    positions:Array.from({length:p.count},(_,i)=>vector(p.getX(i)*size[0],p.getY(i)*size[1],p.getZ(i)*size[2])),
+    normals:Array.from({length:n.count},(_,i)=>vector(n.getX(i),n.getY(i),n.getZ(i))),
+    uvs:Array.from({length:uv.count},(_,i)=>[uv.getX(i),uv.getY(i)]),
+    indices:Array.from(geometry.index.array)
+  };
+}
+export function assetDescription(state,meshes,textureSize=state.textureSize){
+  const root=state.boxes.find(b=>b.parent===null),rootFrame=matrix(root),byId=new Map(state.boxes.map(b=>[b.id,b]));
+  const binds=new Map(state.boxes.map(b=>[b.id,b.parent===null?{c0:new THREE.Matrix4(),c1:new THREE.Matrix4()}:bindFrames(b,byId.get(b.parent))]));
+  const animations=state.animations||[{id:0,name:'Animation 1',frames:state.frames||[]}];
+  return {
+    format:'cube-studio-asset',version:1,
+    coordinates:{handedness:'right',up:'+Y',forward:'-Z',units:'studs',quaternionOrder:'xyzw',rotation:'active-local-to-parent',conversionApplied:true,sourceToAsset:[[-1,0,0],[0,1,0],[0,0,-1]]},
+    texture:{file:'atlas.png',width:textureSize,height:textureSize,filter:'nearest',uvOrigin:'bottom-left',imageOrigin:'top-left',colorSpace:'srgb'},
+    rigRoot:{name:'RigRoot',restTransform:transform(rootFrame),anchored:true,visible:false},
+    parts:state.boxes.map(b=>({id:b.id,name:`Cube_${b.id}`,shape:'box',size:[...dimensions(b)],restTransform:transform(matrix(b)),editorAnchor:b.anchor,anchored:false,canCollide:false,massless:true,baseColor:b.color,texture:'atlas.png',mesh:meshData(b,meshes.get(b.id).geometry)})),
+    joints:state.boxes.map(b=>{
+      const {c0,c1}=binds.get(b.id),axis=b.parent===null?'omni':b.axis||'omni';
+      return {id:b.id,name:`Joint_${b.id}`,parentPartId:b.parent,childPartId:b.id,type:'Motor6D',c0:transform(c0),c1:transform(c1),authoringConstraint:{axis,axisSpace:'parent-part-local',axisVector:axis==='omni'?null:vector(...['x','y','z'].map(a=>a===axis?1:0))}};
+    }),
+    animations:animations.map((a,index)=>({id:a.id??index,name:a.name,loop:true,interpolation:'linear-time-quaternion-slerp',keyframes:(a.frames.length?a.frames:[{time:0,pose:Object.fromEntries(state.boxes.map(b=>[b.id,b]))}]).map(f=>({time:f.time,jointTransforms:Object.fromEntries(state.boxes.map(b=>{
+      const {c0,c1}=binds.get(b.id),parent=b.parent===null?rootFrame:matrix(f.pose[b.parent]||byId.get(b.parent));
+      return [b.id,transform(c0.clone().invert().multiply(parent.clone().invert()).multiply(matrix(f.pose[b.id]||b)).multiply(c1))];
+    }))}))}))
+  };
+}
 export function triggerDownload(data,filename,type){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);}
 export function projectData(state,atlas){return {format:'cube-studio',version:3,state:structuredClone(state),atlas:atlas.toDataURL('image/png')};}
 export function downloadProject(state,atlas){triggerDownload(JSON.stringify(projectData(state,atlas)),'model.cube','application/json');}
-export async function bundleBytes(state,atlas,meshes){const png=await new Promise((resolve,reject)=>atlas.toBlob(b=>b?b.arrayBuffer().then(resolve):reject(Error('Texture export failed')),'image/png'));
-const files={'model.rbxmx':strToU8(robloxXML(state)),'model.cube':strToU8(JSON.stringify(projectData(state,atlas))),'meshes/atlas.png':new Uint8Array(png),'meshes/atlas.mtl':strToU8('newmtl Atlas\nKa 1 1 1\nKd 1 1 1\nKs 0 0 0\nd 1\nillum 1\nmap_Kd atlas.png\n')};
-for(const b of state.boxes)files[`meshes/Cube_${b.id}.obj`]=strToU8(meshOBJ(b,meshes.get(b.id).geometry));
-files['README.txt']=strToU8(`CUBE STUDIO EXPORT\n\nCOORDINATES\nRoblox basis: +X right, +Y up, -Z forward. The editor +Z front is rotated 180 degrees around Y at export. Parts, mesh positions/normals, joint bind frames, and animation transforms all use the same conversion. Texture UVs keep their painted faces. X hinges remain X pitch (forward/back), Y yaw, Z roll. Do not rotate just the meshes, swap X/Z, or reuse old meshes/animations with this rig.\n\nmodel.rbxmx: Import with Insert from File in Roblox Studio. Contains Parts, Motor6D joints, an AnimationController/Animator, and one KeyframeSequence per animation row. The transparent anchored RigRoot is the animation root. The authoring anchor pins are preserved in EditorAnchor values; the cube Parts themselves stay unanchored so Motor6D animation can move them.\n\nPAINT\nPaint is stored in one ${atlas.width} x ${atlas.height} atlas: meshes/atlas.png. All companion OBJ meshes use this same texture with unique face UVs. The .rbxmx uses plain Parts until these meshes and the texture are uploaded to Roblox. Roblox model XML cannot embed local mesh or image assets as published asset IDs. No assets have been uploaded.\n\nUpload each meshes/Cube_ID.obj through the Studio 3D Importer using World Forward = Front, World Up = Top, and Scale Unit = Studs; upload atlas.png once. Replace the corresponding Part with its imported MeshPart, preserving its name, CFrame, size, children, and Motor6D Part0/Part1 references. Set every MeshPart TextureID to the same uploaded atlas asset ID. The OBJ geometry is centered at its local origin and includes its authored size. Each Part preserves that size. EditorJointAxis preserves the joint's authoring axis; Motor6D animation contains the resulting constrained poses. Motor6Ds do not impose physical hinge limits. Import these sequences onto this exact exported rig: standard R6/R15 rigs have different joint frames and require retargeting.\n\nANIMATION\nOpen or import the desired Animation sequence into the Studio Animation Editor for the rig and publish it when ready. Runtime playback requires a published animation asset ID; a KeyframeSequence alone does not auto-play. Preview easing is linear between joint rotations and the final keyframe loops back to the first.\n\nPROJECT\nmodel.cube preserves every cube, anchor, brush stroke, and keyframe. Open it in Cube Studio using Build > folder > Open project. Units are Roblox studs. No gravity is used in authoring.\n\nThis export has not yet been tested inside Roblox Studio or a live Roblox game.\n`);
-return zipSync(files,{level:6});}
-export async function downloadBundle(state,atlas,meshes){triggerDownload(await bundleBytes(state,atlas,meshes),'cube-model.zip','application/zip');}
+const bundleGuide=`CUBE STUDIO ASSET BUNDLE v1
+
+asset.json describes the complete rig and every animation. atlas.png is its one shared texture. model.cube is an exact editable backup for Cube Studio. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
+
+COORDINATES
+All asset.json geometry and transforms are already in right-handed Roblox coordinates: +Y up, -Z forward, studs. The author's +Z front is converted with a proper 180-degree Y rotation. Do not convert again. model.cube alone retains the original editor coordinates.
+A transform is {position:[x,y,z],rotation:[x,y,z,w]}; rotation is a normalized quaternion, not Euler angles. Part restTransform and rigRoot.restTransform are world transforms. Compose translation * quaternion rotation, with unit scale.
+
+PARTS AND TEXTURE
+Each part has a stable numeric id, box dimensions, rest pose, and local mesh data. positions already include the part's size; do not multiply by size again. indices are zero-based counterclockwise triangle vertex indices. positions, normals, and uvs have matching indices. UVs use a bottom-left origin, while the PNG has its usual top-left image origin. Preserve the UVs and use nearest-neighbor filtering where supported. All parts share atlas.png; the geometry/UV data is included so a later importer can create painted meshes without guessing face placement. baseColor is the original authoring swatch, not an additional tint to multiply over the already painted atlas.
+
+JOINTS
+Create the invisible anchored rigRoot, then all parts and Motor6Ds. parentPartId:null refers to rigRoot. Other parentPartId and childPartId values refer to part ids. c0 and c1 are the two part-local bind frames. The equation is:
+childWorld = parentWorld * c0 * jointTransform * inverse(c1)
+At rest, jointTransform is identity. Joint ids match their child part ids. Constraint axes and signed axisVector values are parent-part-local authoring metadata, not physical Motor6D limits. Animated poses already include these constraints. editorAnchor is an authoring pin; animated parts remain unanchored and non-colliding.
+
+ANIMATIONS
+Every animation row is separate. Keyframe time is in seconds. jointTransforms maps each joint id to its local animation transform, including the joint from rigRoot to the first cube. Build nested poses using joint hierarchy and part names. Slerp rotations and linearly interpolate translations between keyframes. These poses belong to this exact rig; another rig needs retargeting. Creating/uploading Roblox mesh, texture, and animation assets is a later import step.
+`;
+export async function bundleBytes(state,atlas,meshes){
+  const png=await new Promise((resolve,reject)=>atlas.toBlob(b=>b?b.arrayBuffer().then(resolve):reject(Error('Texture export failed')),'image/png'));
+  return zipSync({
+    'asset.json':strToU8(JSON.stringify(assetDescription(state,meshes,atlas.width),null,2)),
+    'atlas.png':new Uint8Array(png),
+    'model.cube':strToU8(JSON.stringify(projectData(state,atlas))),
+    'README.txt':strToU8(bundleGuide)
+  },{level:6});
+}
+export async function downloadBundle(state,atlas,meshes){triggerDownload(await bundleBytes(state,atlas,meshes),'cube-asset.zip','application/zip');}
 export async function readProject(file){if(file.size>30*1024*1024)throw Error('Project is too large');const data=JSON.parse(await file.text()),s=data.state;const fail=()=>{throw Error('Invalid Cube Studio project');};if(data.format!=='cube-studio'||![1,2,3].includes(data.version)||!s||!Array.isArray(s.boxes)||s.boxes.length<1||s.boxes.length>128)fail();
 const validArray=(a,length)=>Array.isArray(a)&&a.length===length&&a.every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<10000);const validQ=q=>validArray(q,4)&&Math.abs(Math.hypot(...q)-1)<.01;const ids=new Set(),slots=new Set();for(let i=0;i<s.boxes.length;i++){const b=s.boxes[i];if(!Number.isInteger(b.id)||b.id<0||ids.has(b.id)||!Number.isInteger(b.slot)||b.slot<0||b.slot>=128||slots.has(b.slot)||!validArray(b.p,3)||!validQ(b.q)||typeof b.anchor!=='boolean'||!/^#[0-9a-f]{6}$/i.test(b.color))fail();if(i===0){if(b.id!==0||b.parent!==null)fail();}else if(!ids.has(b.parent)||!validArray(b.a,3)||!validArray(b.b,3))fail();ids.add(b.id);slots.add(b.slot);if(b.size!==undefined&&(!validArray(b.size,3)||b.size.some(v=>v<.2||v>12)))fail();if(b.axis!==undefined&&!['omni','x','y','z'].includes(b.axis))fail();if(b.normal!==undefined&&(!validArray(b.normal,3)||b.normal.filter(v=>Math.abs(v)===1).length!==1||b.normal.filter(v=>v===0).length!==2))fail();}
 if(!Number.isInteger(s.nextId)||s.nextId<=Math.max(...ids))fail();

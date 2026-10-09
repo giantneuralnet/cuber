@@ -1,72 +1,55 @@
-"""Verify the actual exported archive, XML rig, and Motor6D pose transforms."""
-import sys, zipfile, json, xml.etree.ElementTree as ET, math, struct
-path=sys.argv[1]
-with zipfile.ZipFile(path) as z:
+"""Independently reconstruct all asset.json poses and compare with the project."""
+import sys,zipfile,json,struct,math,base64
+with zipfile.ZipFile(sys.argv[1]) as z:
     assert z.testzip() is None
-    project=json.loads(z.read('model.cube'))
-    s=project['state']
-    xml=ET.fromstring(z.read('model.rbxmx'))
-    png=z.read('meshes/atlas.png')
-    assert png[:8] == b'\x89PNG\r\n\x1a\n'
-    resolution=s.get('textureSize',2048)
-    assert resolution in (256,512,1024)
-    assert struct.unpack('>II',png[16:24]) == (resolution,resolution)
-    for b in s['boxes']:
-        obj=z.read(f"meshes/Cube_{b['id']}.obj").decode()
-        assert sum(l.startswith('v ') for l in obj.splitlines()) == 24
-        assert sum(l.startswith('vt ') for l in obj.splitlines()) == 24
-        assert sum(l.startswith('f ') for l in obj.splitlines()) == 12
-        for l in obj.splitlines():
-            if l.startswith('vt '): assert all(0 <= float(v) <= 1 for v in l.split()[1:])
-        vertices=[list(map(float,l.split()[1:])) for l in obj.splitlines() if l.startswith('v ')]
-        size=b.get('size',[1,1,1])
-        extent=[max(v[i] for v in vertices)-min(v[i] for v in vertices) for i in range(3)]
-        assert max(abs(extent[i]-size[i]) for i in range(3)) < 1e-7
-        part=xml.find(f".//Item[@referent='P{b['id']}']/Properties")
-        assert part.findtext("bool[@name='CanCollide']") == 'false'
-        assert max(abs(float(part.findtext(f"Vector3[@name='size']/{axis}"))-value) for axis,value in zip('XYZ',size)) < 1e-7
-        if project['version'] >= 2:
-            assert xml.findtext(f".//Item[@referent='AXIS{b['id']}']/Properties/string[@name='Value']") == b.get('axis','omni')
-    refs={i.attrib['referent']:i for i in xml.iter('Item')}
-    assert len(refs)==len(list(xml.iter('Item')))
-    for r in xml.iter('Ref'): assert r.text in refs or r.text in ('null','nil')
-    motors=xml.findall('.//Item[@class="Motor6D"]')
-    assert len(motors)==len(s['boxes']) # Includes RigRoot -> first cube
-    keys=xml.findall('.//Item[@class="Keyframe"]')
-    animations=s.get('animations',[{'frames':s.get('frames',[])}])
-    assert len(xml.findall('.//Item[@class="KeyframeSequence"]')) == len(animations)
-    assert len(keys)==sum(max(1,len(a['frames'])) for a in animations)
+    assert set(z.namelist()) == {'asset.json','atlas.png','model.cube','README.txt'}
+    project=json.loads(z.read('model.cube')); s=project['state']; asset=json.loads(z.read('asset.json'))
+    assert asset['format']=='cube-studio-asset' and asset['version']==1
+    assert asset['coordinates']['forward']=='-Z' and asset['coordinates']['up']=='+Y'
+    png=z.read('atlas.png');resolution=s['textureSize']
+    assert png[:8]==b'\x89PNG\r\n\x1a\n' and struct.unpack('>II',png[16:24])==(resolution,resolution)
+    assert png==base64.b64decode(project['atlas'].split(',')[1])
+    assert asset['texture']['width']==resolution and asset['texture']['filter']=='nearest'
+    parts={p['id']:p for p in asset['parts']};joints={j['id']:j for j in asset['joints']}
+    assert len(parts)==len(joints)==len(s['boxes'])
     def mul(a,b): return [[sum(a[r][k]*b[k][c] for k in range(4)) for c in range(4)] for r in range(4)]
     def inv(m):
         a=[[m[c][r] for c in range(3)]+[0] for r in range(3)]+[[0,0,0,1]]
-        for r in range(3): a[r][3]=-sum(a[r][k]*m[k][3] for k in range(3))
+        for r in range(3):a[r][3]=-sum(a[r][k]*m[k][3] for k in range(3))
         return a
-    def cf(e):
-        return [[float(e.findtext(f'R{r}{c}')) for c in range(3)]+[float(e.findtext('XYZ'[r]))] for r in range(3)]+[[0,0,0,1]]
+    def transform(p,q):
+        x,y,z,w=q;px,py,pz=p
+        assert abs(sum(v*v for v in q)-1)<1e-7
+        return [[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w),px],[2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w),py],[2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y),pz],[0,0,0,1]]
+    def cf(t):return transform(t['position'],t['rotation'])
     def world(p):
-        x,y,z,w=p['q'];px,py,pz=p['p']
-        m=[[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w),px],[2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w),py],[2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y),pz],[0,0,0,1]]
-        # Proper Y half-turn: front +Z -> Roblox -Z, with no X/Z swap.
-        signs=[-1,1,-1,1]
+        m=transform(p['p'],p['q']);signs=[-1,1,-1,1]
         return [[m[r][c]*signs[r]*signs[c] for c in range(4)] for r in range(4)]
-    errors=[]
+    def error(a,b):return max(abs(a[r][c]-b[r][c]) for r in range(4) for c in range(4))
+    root=cf(asset['rigRoot']['restTransform']);errors=[]
     for b in s['boxes']:
-        props=refs[f"M{b['id']}"].find('Properties')
-        c0=cf(props.find("CoordinateFrame[@name='C0']"));c1=cf(props.find("CoordinateFrame[@name='C1']"))
-        parent=s['boxes'][0] if b['parent'] is None else next(p for p in s['boxes'] if p['id']==b['parent'])
-        got=mul(mul(world(parent),c0),inv(c1));want=world(b)
-        assert max(abs(got[r][c]-want[r][c]) for r in range(4) for c in range(4)) < 1e-6, 'bind frames must preserve rest pose'
-        part=cf(refs[f"P{b['id']}"].find("Properties/CoordinateFrame[@name='CFrame']"))
-        assert max(abs(part[r][c]-want[r][c]) for r in range(4) for c in range(4)) < 1e-6
-
-    for track,animation in enumerate(animations):
-      for i,f in enumerate(animation['frames']):
-        for b in s['boxes']:
-            props=refs[f"M{b['id']}"] .find('Properties')
-            c0=cf(props.find("CoordinateFrame[@name='C0']"));c1=cf(props.find("CoordinateFrame[@name='C1']"))
-            p=cf(refs[f"FA{track}K{i}P{b['id']}"] .find("Properties/CoordinateFrame[@name='CFrame']"))
-            parent=world(s['boxes'][0]) if b['parent'] is None else world(f['pose'][str(b['parent'])])
-            got=mul(mul(mul(parent,c0),p),inv(c1));want=world(f['pose'][str(b['id'])])
-            errors.append(max(abs(got[r][c]-want[r][c]) for r in range(4) for c in range(4)))
-    assert max(errors,default=0) < 1e-6, errors
-    print(f"PASS: {len(s['boxes'])} cubes, {len(motors)} Motor6Ds, {len(keys)} keyframes; valid archive, atlas, UVs, sizes, axes and references; pose reconstruction error {max(errors,default=0):.2g}")
+        part=parts[b['id']];j=joints[b['id']];mesh=part['mesh']
+        assert part['size']==b['size'] and part['canCollide']==False
+        assert len(mesh['positions'])==len(mesh['normals'])==len(mesh['uvs'])==24 and len(mesh['indices'])==36
+        assert all(0<=v<=1 for uv in mesh['uvs'] for v in uv)
+        assert all(0<=i<24 for i in mesh['indices'])
+        assert j['parentPartId']==b['parent'] and j['childPartId']==b['id']
+        assert j['authoringConstraint']['axis']==b['axis']
+        assert error(cf(part['restTransform']),world(b))<1e-7
+        parent=root if b['parent'] is None else cf(parts[b['parent']]['restTransform'])
+        assert error(mul(mul(parent,cf(j['c0'])),inv(cf(j['c1']))),world(b))<1e-7
+    assert len(asset['animations'])==len(s['animations'])
+    for animation,source in zip(asset['animations'],s['animations']):
+        assert animation['id']==source['id'] and animation['name']==source['name']
+        frames=source['frames'] or [{'time':0,'pose':{str(b['id']):b for b in s['boxes']}}]
+        assert len(animation['keyframes'])==len(frames)
+        for f,original in zip(animation['keyframes'],frames):
+            assert f['time']==original['time']
+            reconstructed={}
+            for b in s['boxes']:
+                j=joints[b['id']];parent=root if b['parent'] is None else reconstructed[b['parent']]
+                got=mul(mul(mul(parent,cf(j['c0'])),cf(f['jointTransforms'][str(b['id'])])),inv(cf(j['c1'])))
+                reconstructed[b['id']]=got
+                errors.append(error(got,world(original['pose'][str(b['id'])])))
+    assert max(errors,default=0)<1e-7
+    print(f"PASS: {len(parts)} parts, {len(joints)} joints, {len(asset['animations'])} animations; full hierarchy reconstruction error {max(errors,default=0):.2g}; exact PNG and valid geometry.")
