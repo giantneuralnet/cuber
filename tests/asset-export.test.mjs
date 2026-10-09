@@ -62,3 +62,8 @@ if(process.argv[2]){
  writeFileSync(process.argv[3],await bundleBytes(state,atlas,meshes));
  console.log(`Exported real project: ${state.boxes.length} cubes, ${state.animations.length} animations.`);
 }
+const {exportFilename}=await import('../dist/export.js');
+assert.equal(exportFilename({name:'  Walk Cycle  '}),'Walk Cycle');
+assert.equal(exportFilename({name:'Legs/front:*?'}),'Legs-front---');
+assert.equal(exportFilename({name:'...'}),'cube-asset');
+console.log('PASS: named exports and safe filename fallback.');

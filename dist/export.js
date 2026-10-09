@@ -32,7 +32,7 @@ export function assetDescription(state,meshes,textureSize=state.textureSize){
   const binds=new Map(state.boxes.map(b=>[b.id,b.parent===null?{c0:new THREE.Matrix4(),c1:new THREE.Matrix4()}:bindFrames(b,byId.get(b.parent))]));
   const animations=state.animations||[{id:0,name:'Animation 1',frames:state.frames||[]}];
   return {
-    format:'cube-studio-asset',version:1,
+    format:'cube-studio-asset',version:1,name:state.name?.trim()||'Cube Asset',
     coordinates:{handedness:'right',up:'+Y',forward:'-Z',units:'studs',quaternionOrder:'xyzw',rotation:'active-local-to-parent',conversionApplied:true,sourceToAsset:[[-1,0,0],[0,1,0],[0,0,-1]]},
     texture:{file:'atlas.png',width:textureSize,height:textureSize,filter:'nearest',uvOrigin:'bottom-left',imageOrigin:'top-left',colorSpace:'srgb'},
     rigRoot:{name:'RigRoot',restTransform:transform(rootFrame),anchored:true,visible:false},
@@ -49,7 +49,8 @@ export function assetDescription(state,meshes,textureSize=state.textureSize){
 }
 export function triggerDownload(data,filename,type){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);}
 export function projectData(state,atlas){return {format:'cube-studio',version:3,state:structuredClone(state),atlas:atlas.toDataURL('image/png')};}
-export function downloadProject(state,atlas){triggerDownload(JSON.stringify(projectData(state,atlas)),'model.cube','application/json');}
+export const exportFilename=state=>(state.name?.trim()||'cube-asset').replace(/[<>:\"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/g,'').slice(0,80)||'cube-asset';
+export function downloadProject(state,atlas){triggerDownload(JSON.stringify(projectData(state,atlas)),exportFilename(state)+'.cube','application/json');}
 const bundleGuide=`CUBE STUDIO ASSET BUNDLE v1
 
 asset.json describes the complete rig and every animation. atlas.png is its one shared texture. model.cube is an exact editable backup for Cube Studio. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
@@ -78,9 +79,10 @@ export async function bundleBytes(state,atlas,meshes){
     'README.txt':strToU8(bundleGuide)
   },{level:6});
 }
-export async function downloadBundle(state,atlas,meshes){triggerDownload(await bundleBytes(state,atlas,meshes),'cube-asset.zip','application/zip');}
+export async function downloadBundle(state,atlas,meshes){triggerDownload(await bundleBytes(state,atlas,meshes),exportFilename(state)+'.zip','application/zip');}
 export async function readProject(file){if(file.size>30*1024*1024)throw Error('Project is too large');const data=JSON.parse(await file.text()),s=data.state;const fail=()=>{throw Error('Invalid Cube Studio project');};if(data.format!=='cube-studio'||![1,2,3].includes(data.version)||!s||!Array.isArray(s.boxes)||s.boxes.length<1||s.boxes.length>128)fail();
 const validArray=(a,length)=>Array.isArray(a)&&a.length===length&&a.every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<10000);const validQ=q=>validArray(q,4)&&Math.abs(Math.hypot(...q)-1)<.01;const ids=new Set(),slots=new Set();for(let i=0;i<s.boxes.length;i++){const b=s.boxes[i];if(!Number.isInteger(b.id)||b.id<0||ids.has(b.id)||!Number.isInteger(b.slot)||b.slot<0||b.slot>=128||slots.has(b.slot)||!validArray(b.p,3)||!validQ(b.q)||typeof b.anchor!=='boolean'||!/^#[0-9a-f]{6}$/i.test(b.color))fail();if(i===0){if(b.id!==0||b.parent!==null)fail();}else if(!ids.has(b.parent)||!validArray(b.a,3)||!validArray(b.b,3))fail();ids.add(b.id);slots.add(b.slot);if(b.size!==undefined&&(!validArray(b.size,3)||b.size.some(v=>v<.2||v>12)))fail();if(b.axis!==undefined&&!['omni','x','y','z'].includes(b.axis))fail();if(b.normal!==undefined&&(!validArray(b.normal,3)||b.normal.filter(v=>Math.abs(v)===1).length!==1||b.normal.filter(v=>v===0).length!==2))fail();}
+if(s.name!==undefined&&(typeof s.name!=='string'||s.name.length>80))fail();
 if(!Number.isInteger(s.nextId)||s.nextId<=Math.max(...ids))fail();
 const animations=data.version<3?[{id:0,name:'Animation 1',frames:s.frames}]:s.animations;if(!Array.isArray(animations)||!animations.length||animations.length>16)fail();const animationIds=new Set();for(const animation of animations){if(!Number.isInteger(animation.id)||animation.id<0||animationIds.has(animation.id)||typeof animation.name!=='string'||animation.name.length>80||!Array.isArray(animation.frames)||animation.frames.length>60)fail();animationIds.add(animation.id);let prev=-1;for(const f of animation.frames){if(typeof f.time!=='number'||!Number.isFinite(f.time)||f.time<0||f.time>60||f.time<=prev||!f.pose)fail();for(const b of s.boxes)if(!f.pose[b.id]||!validArray(f.pose[b.id].p,3)||!validQ(f.pose[b.id].q))fail();prev=f.time;}if(animation.frames.length&&animation.frames[0].time!==0)fail();}const active=data.version<3?0:s.animation;if(!Number.isInteger(active)||active<0||active>=animations.length||!Number.isInteger(s.frame)||s.frame<0||s.frame>=Math.max(1,animations[active].frames.length))fail();
 if(typeof data.atlas!=='string'||!data.atlas.startsWith('data:image/png;base64,')||data.atlas.length>24*1024*1024)fail();const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('Invalid paint texture'));image.src=data.atlas;});if(![...TEXTURE_SIZES,2048,4096].includes(image.width)||image.height!==image.width||(s.textureSize!==undefined&&s.textureSize!==image.width))fail();if(s.atlasLayout!==undefined&&!validateLayout(s.atlasLayout,s.boxes,image.width))fail();s.textureSize=Math.min(image.width,1024);return {state:normalizeModel(s),image};}

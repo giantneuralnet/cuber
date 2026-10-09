@@ -12,7 +12,7 @@ Open http://localhost:4173. All libraries are vendored; no package installation 
 
 - Tap a face to attach a cube; Erase removes a cube and its descendant branch.
 - Mirror X/Y/Z switches stay available in every mode. Build mirrors placement onto existing opposite surfaces, and mirrors moving, resizing, and erasing matching cubes. The same switches control Paint mirroring and reflected physical posing in Animate.
-- Drag empty space to orbit. Use Orbit to rotate from anywhere. Pinch to zoom and use two fingers to pan. On desktop, scroll to zoom and right-drag to pan.
+- Drag empty space to orbit in Build or Animate. Paint uses the whole brush footprint, including when its center is over empty space; use Orbit or drag the view cube to orbit while painting. Use Orbit to rotate from anywhere. Pinch to zoom and use two fingers to pan. On desktop, scroll to zoom and right-drag to pan.
 - Use the arrow tool to select a cube. Drag it along its connected face, or drag its corner handles to resize it. Attached branches and all saved keyframes follow the new size and joint pivots. The root slides along the ground plane. Build’s Grid control sets placement, block sliding, joint sliding, and resizing to None, 0.05, 0.1, 0.2, or 0.25 studs. None disables snapping and hides the floor grid. Drag a joint dot with the arrow tool to reposition its pivot within the contacting faces without moving the rest blocks.
 - Tap a joint dot in arrow or Animate mode to choose Omni, X, Y, or Z rotation in the parent cube’s local axes. Axis changes constrain existing keyframes as well as physical dragging.
 - A 3D line shows the chosen joint rotation axis; Omni shows all three. The floor is transparent while the grid remains visible.
@@ -72,3 +72,16 @@ The versioned description includes box sizes and rest poses, hierarchy, both joi
 `node tests/asset-export.test.mjs` checks the data schema, XYZ hinges, signed leg swing, joint connectivity, rotated rest poses, geometry winding and UVs, animation rows, exact texture bytes, and editable backup preservation. `python3 tests/check-export.py /path/to/cube-asset.zip` independently rebuilds every world pose from the JSON hierarchy and compares it to the source project. The supplied six-part, four-animation project reconstructs all 13 keyframes with maximum error below 4e-16.
 
 Earlier XML validation notes above describe historical releases. Current exports are JSON asset bundles and have not been imported into Roblox yet.
+
+
+## Selection, paint and views
+
+Build's arrow tool clears the selection when tapping empty space; dragging still orbits. Changing Grid snaps every part center to the nearest world-grid position (None leaves positions alone), rebinding both joint endpoints and updating all animation rows. Sizes and rotations are preserved. Undo restores the grid and original positions together.
+
+Paint has icon-only Brush, Fill and Pick color tools. Pick color samples the atlas's exact pixel, without lighting. Large brush stamps rasterize onto visible texels across multiple faces and neighboring cubes, with nearest-surface occlusion and exact integer pixel colors. Mirroring applies to each painted texel. Exploded view sits beside Mirror and separates displayed cubes with a gap so internal faces can be reached. It never changes model geometry, pivots, keyframes or exported transforms; mirrored strokes use the underlying assembled coordinates. Toggle it off to reassemble.
+
+The upper-left view cube is present in every mode. Tap a face for an orthographic plane view; drag the cube to orbit to other faces. Its diamond button restores perspective. Zoom and pan also work in orthographic views. From the texture atlas, selecting a cube face returns to the corresponding 3D plane view.
+
+The export popup has an Asset name field. Opening the popup leaves the field unfocused and does not select its contents. The saved name is included in asset.json and model.cube and supplies both ZIP and project-copy filenames; unsafe filename characters are replaced. Blank names use cube-asset.
+
+`node tests/editor-geometry.test.mjs` covers grid snap and all-frame connectivity, exploded offsets, pixel-center multi-face/multi-cube brush coverage and occlusion. Portrait browser checks cover deselection, grid/paint Undo, exact color sampling, front/top orthographic views, the 320px paint layout, a brush crossing a face edge, and unfocused named exports. A named bundle downloaded while exploded reconstructs the original model coordinates correctly. Physical iOS device validation remains outstanding.
