@@ -1,7 +1,8 @@
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
 import {validateLayout,legacyLayout} from './atlas-layout.js';
-import {projectFileData} from './asset-project.js';
+import {projectFileData} from './asset-project.js?v=2';
+import {validatePaintLayer} from './paint-layer.js';
 import {zipSync,strToU8} from './vendor/fflate.js';
 
 const matrix=p=>new THREE.Matrix4().compose(new THREE.Vector3(...p.p),new THREE.Quaternion(...p.q),new THREE.Vector3(1,1,1));
@@ -34,16 +35,17 @@ export function assetDescription(state,meshes,textureSize=state.textureSize,sett
   const animations=state.animations||[{id:0,name:'Animation 1',frames:state.frames||[]}];
   return {
     format:'cube-studio-asset',version:2,name:state.name?.trim()||'Cube Asset',
-    editor:{version:1,nextId:state.nextId??Math.max(...state.boxes.map(b=>b.id))+1,nextAnimationId:state.nextAnimationId??Math.max(...animations.map(a=>a.id))+1,animation:state.animation??0,frame:state.frame??0,gridSize:state.gridSize??.25,atlasLayout:structuredClone(state.atlasLayout||legacyLayout(state.boxes,textureSize)),parts:Object.fromEntries(state.boxes.map(b=>[b.id,{slot:b.slot,...(b.normal?{normal:[...b.normal]}:{})}])),settings:structuredClone(settings)},
+    editor:{version:1,nextId:state.nextId??Math.max(...state.boxes.map(b=>b.id))+1,nextAnimationId:state.nextAnimationId??Math.max(...animations.map(a=>a.id))+1,animation:state.animation??0,frame:state.frame??0,gridSize:state.gridSize??.25,atlasLayout:structuredClone(state.atlasLayout||legacyLayout(state.boxes,textureSize)),parts:Object.fromEntries(state.boxes.map(b=>[b.id,{slot:b.slot,...(b.normal?{normal:[...b.normal]}:{})}])),paintFrame:state.paintLayer?.frame??0,settings:structuredClone(settings)},
     coordinates:{handedness:'right',up:'+Y',forward:'-Z',units:'studs',quaternionOrder:'xyzw',rotation:'active-local-to-parent',conversionApplied:true,sourceToAsset:[[-1,0,0],[0,1,0],[0,0,-1]]},
     texture:{file:'atlas.png',width:textureSize,height:textureSize,filter:'nearest',uvOrigin:'bottom-left',imageOrigin:'top-left',colorSpace:'srgb'},
+    ...(state.paintLayer?{paintLayer:{version:1,name:'Layer 1',blend:'source-over',uvLayout:'base-texture',frames:state.paintLayer.frames.map((f,i)=>({file:f.png?`paint-layer/frame-${i}.png`:null}))}}:{}),
     rigRoot:{name:'RigRoot',restTransform:transform(rootFrame),anchored:true,visible:false},
     parts:state.boxes.map(b=>({id:b.id,name:b.name||`Cube_${b.id}`,shape:'box',size:[...dimensions(b)],restTransform:transform(matrix(b)),editorAnchor:b.anchor,anchored:false,canCollide:false,massless:true,baseColor:b.color,texture:'atlas.png',mesh:meshData(b,meshes.get(b.id).geometry)})),
     joints:state.boxes.map(b=>{
       const {c0,c1}=binds.get(b.id),axis=b.parent===null?'omni':b.axis||'omni';
       return {id:b.id,name:`Joint_${b.id}`,parentPartId:b.parent,childPartId:b.id,type:'Motor6D',c0:transform(c0),c1:transform(c1),authoringConstraint:{axis,axisSpace:'parent-part-local',axisVector:axis==='omni'?null:vector(...['x','y','z'].map(a=>a===axis?1:0))}};
     }),
-    animations:animations.map((a,index)=>({id:a.id??index,name:a.name,loop:true,interpolation:'linear-time-quaternion-slerp',keyframes:a.frames.map(f=>({time:f.time,jointTransforms:Object.fromEntries(state.boxes.map(b=>{
+    animations:animations.map((a,index)=>({id:a.id??index,name:a.name,loop:true,interpolation:'linear-time-quaternion-slerp',keyframes:a.frames.map(f=>({time:f.time,paintFrame:f.paintFrame??0,jointTransforms:Object.fromEntries(state.boxes.map(b=>{
       const {c0,c1}=binds.get(b.id),parent=b.parent===null?rootFrame:matrix(f.pose[b.parent]||byId.get(b.parent));
       return [b.id,transform(c0.clone().invert().multiply(parent.clone().invert()).multiply(matrix(f.pose[b.id]||b)).multiply(c1))];
     }))}))}))
@@ -68,6 +70,9 @@ Create the invisible anchored rigRoot, then all parts and Motor6Ds. parentPartId
 childWorld = parentWorld * c0 * jointTransform * inverse(c1)
 At rest, jointTransform is identity. Joint ids match their child part ids. Constraint axes and signed axisVector values are parent-part-local authoring metadata, not physical Motor6D limits. Animated poses already include these constraints. editorAnchor is an authoring pin; animated parts remain unanchored and non-colliding.
 
+PAINT LAYER
+The optional paintLayer is one transparent animated overlay above atlas.png. Each PNG uses the exact same dimensions and UV layout as the base. Null file means a fully transparent frame. Use source-over alpha composition, nearest filtering, and select the zero-based paintFrame referenced by each animation keyframe. Hold that texture until the next pose keyframe; there is no separate texture clock. Keep overlays separate when importing to Roblox; do not replace or tint the base atlas.
+
 ANIMATIONS
 Every animation row is separate. Empty keyframes means an unanimated row; use the rig rest pose. The editor settings are optional for Roblox import. Keyframe time is in seconds. jointTransforms maps each joint id to its local animation transform, including the joint from rigRoot to the first cube. Build nested poses using joint hierarchy and part names. Slerp rotations and linearly interpolate translations between keyframes. These poses belong to this exact rig; another rig needs retargeting. Creating/uploading Roblox mesh, texture, and animation assets is a later import step.
 `;
@@ -78,7 +83,8 @@ export async function bundleBytes(state,atlas,meshes,settings={}){
   return zipSync({
     'asset.json':strToU8(JSON.stringify(description,null,2)),
     'atlas.png':new Uint8Array(png),
-    'README.txt':strToU8(bundleGuide)
+    'README.txt':strToU8(bundleGuide),
+    ...Object.fromEntries((state.paintLayer?.frames||[]).flatMap((f,i)=>f.png?[[`paint-layer/frame-${i}.png`,Uint8Array.from(atob(f.png.split(',')[1]),c=>c.charCodeAt(0))]]:[]))
   },{level:6});
 }
 export async function downloadBundle(state,atlas,meshes,settings={}){triggerDownload(await bundleBytes(state,atlas,meshes,settings),exportFilename(state)+'.zip','application/zip');}
@@ -87,4 +93,4 @@ const validArray=(a,length)=>Array.isArray(a)&&a.length===length&&a.every(n=>typ
 if(s.name!==undefined&&(typeof s.name!=='string'||s.name.length>80))fail();
 if(!Number.isInteger(s.nextId)||s.nextId<=Math.max(...ids))fail();
 const animations=data.version<3?[{id:0,name:'Animation 1',frames:s.frames}]:s.animations;if(!Array.isArray(animations)||!animations.length||animations.length>16)fail();const animationIds=new Set();for(const animation of animations){if(!Number.isInteger(animation.id)||animation.id<0||animationIds.has(animation.id)||typeof animation.name!=='string'||animation.name.length>80||!Array.isArray(animation.frames)||animation.frames.length>60)fail();animationIds.add(animation.id);let prev=-1;for(const f of animation.frames){if(typeof f.time!=='number'||!Number.isFinite(f.time)||f.time<0||f.time>60||f.time<=prev||!f.pose)fail();for(const b of s.boxes)if(!f.pose[b.id]||!validArray(f.pose[b.id].p,3)||!validQ(f.pose[b.id].q))fail();prev=f.time;}if(animation.frames.length&&animation.frames[0].time!==0)fail();}const active=data.version<3?0:s.animation;if(!Number.isInteger(active)||active<0||active>=animations.length||!Number.isInteger(s.frame)||s.frame<0||s.frame>=Math.max(1,animations[active].frames.length))fail();
-if(typeof data.atlas!=='string'||!data.atlas.startsWith('data:image/png;base64,')||data.atlas.length>24*1024*1024)fail();const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('Invalid paint texture'));image.src=data.atlas;});if(![...TEXTURE_SIZES,2048,4096].includes(image.width)||image.height!==image.width||(s.textureSize!==undefined&&s.textureSize!==image.width))fail();if(s.atlasLayout!==undefined&&!validateLayout(s.atlasLayout,s.boxes,image.width))fail();s.textureSize=Math.min(image.width,1024);return {state:normalizeModel(s),image,editor:data.editor};}
+if(typeof data.atlas!=='string'||!data.atlas.startsWith('data:image/png;base64,')||data.atlas.length>24*1024*1024)fail();const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('Invalid paint texture'));image.src=data.atlas;});if(![...TEXTURE_SIZES,2048,4096].includes(image.width)||image.height!==image.width||(s.textureSize!==undefined&&s.textureSize!==image.width))fail();if(s.atlasLayout!==undefined&&!validateLayout(s.atlasLayout,s.boxes,image.width))fail();const layerImages=[];if(s.paintLayer!==undefined){if(!validatePaintLayer(s.paintLayer))fail();for(const frame of s.paintLayer.frames){if(!frame.png){layerImages.push(null);continue;}const overlay=new Image();await new Promise((resolve,reject)=>{overlay.onload=resolve;overlay.onerror=()=>reject(Error('Invalid paint layer texture'));overlay.src=frame.png;});if(overlay.width!==image.width||overlay.height!==image.height)fail();layerImages.push(overlay);}}for(const animation of animations)for(const frame of animation.frames)if(frame.paintFrame!==undefined&&(!Number.isInteger(frame.paintFrame)||frame.paintFrame<0||frame.paintFrame>=(s.paintLayer?.frames.length||1)))fail();s.textureSize=Math.min(image.width,1024);return {state:normalizeModel(s),image,layerImages,editor:data.editor};}

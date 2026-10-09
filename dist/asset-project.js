@@ -53,7 +53,7 @@ export function stateFromAsset(asset){
         const m=parent.clone().multiply(joint.c0).multiply(matrix(frame.jointTransforms?.[box.id])).multiply(joint.c1.clone().invert());
         world.set(box.id,m);pose[box.id]=editorPose(m);
       }
-      return {time:frame.time,pose};
+      return {time:frame.time,pose,...(frame.paintFrame!==undefined?{paintFrame:frame.paintFrame}:{})};
     })};
   });
   return {name:asset.name,boxes,animations,textureSize:asset.texture.width,nextId:editor.nextId,
@@ -69,17 +69,28 @@ export async function projectFileData(file){
   const files=unzipSync(bytes,{filter:entry=>{
     total+=entry.originalSize;
     if(++count>100||total>64*1024*1024)throw Error('Project ZIP is too large');
-    if(!['asset.json','atlas.png','model.cube'].includes(entry.name))return false;
+    if(!['asset.json','atlas.png','model.cube'].includes(entry.name)&&!/^paint-layer\/frame-\d+\.png$/.test(entry.name))return false;
     if(names.has(entry.name))fail();names.add(entry.name);return true;
   }});
   if(!files['asset.json'])fail();
   const asset=JSON.parse(strFromU8(files['asset.json']));
   // Previously exported bundles remain editable through their legacy backup.
   if(asset.format==='cube-studio-asset'&&asset.version===1&&files['model.cube'])return JSON.parse(strFromU8(files['model.cube']));
-  const state=stateFromAsset(asset),png=files['atlas.png'];
-  if(!png||png.length>18*1024*1024||png.length<24||![137,80,78,71,13,10,26,10].every((v,i)=>png[i]===v))fail();
-  const view=new DataView(png.buffer,png.byteOffset,png.byteLength);
-  if(view.getUint32(16)!==state.textureSize||view.getUint32(20)!==state.textureSize)fail();
-  let binary='';for(let i=0;i<png.length;i+=8192)binary+=String.fromCharCode(...png.subarray(i,i+8192));
-  return {format:'cube-studio',version:3,state,atlas:'data:image/png;base64,'+btoa(binary),editor:asset.editor.settings};
+  const state=stateFromAsset(asset);
+  function pngURL(png){
+    if(!png||png.length>18*1024*1024||png.length<24||![137,80,78,71,13,10,26,10].every((v,i)=>png[i]===v))fail();
+    const view=new DataView(png.buffer,png.byteOffset,png.byteLength);
+    if(view.getUint32(16)!==state.textureSize||view.getUint32(20)!==state.textureSize)fail();
+    let binary='';for(let i=0;i<png.length;i+=8192)binary+=String.fromCharCode(...png.subarray(i,i+8192));
+    return 'data:image/png;base64,'+btoa(binary);
+  }
+  if(asset.paintLayer!==undefined){
+    const layer=asset.paintLayer;
+    if(layer.version!==1||!Array.isArray(layer.frames)||!layer.frames.length||layer.frames.length>16)fail();
+    state.paintLayer={frame:asset.editor.paintFrame??0,frames:layer.frames.map(f=>{
+      if(f.file!==null&&(typeof f.file!=='string'||!/^paint-layer\/frame-\d+\.png$/.test(f.file)))fail();
+      return {png:f.file===null?'':pngURL(files[f.file])};
+    })};
+  }
+  return {format:'cube-studio',version:3,state,atlas:pngURL(files['atlas.png']),editor:asset.editor.settings};
 }

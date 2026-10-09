@@ -49,6 +49,25 @@ const savedAgain=await readProject(new Blob([await bundleBytes(loaded.state,atla
 const legacy=projectData(state,atlas);sameState(state,(await readProject(new Blob([JSON.stringify(legacy)]))).state);
 const oldZip=zipSync({'asset.json':strToU8(JSON.stringify({format:'cube-studio-asset',version:1})),'model.cube':strToU8(JSON.stringify(legacy))});sameState(state,(await readProject(new Blob([oldZip]))).state);
 const asset=JSON.parse(strFromU8(files['asset.json']));
+const layered=structuredClone(state);
+layered.paintLayer={frame:1,frames:[{png:atlas.toDataURL()},{png:''}]};
+layered.animations[0].frames[0].paintFrame=1;
+layered.animations[0].frames[1].paintFrame=0;
+const layerBytes=await bundleBytes(layered,atlas,meshes,settings),layerFiles=unzipSync(layerBytes),layerLoaded=await readProject(new Blob([layerBytes]));
+assert.deepEqual(layerLoaded.state.paintLayer,layered.paintLayer);
+assert.deepEqual(layerLoaded.state.animations[0].frames.map(f=>f.paintFrame),[1,0]);
+assert.deepEqual(Buffer.from(layerFiles['paint-layer/frame-0.png']),png);
+assert.equal(layerFiles['paint-layer/frame-1.png'],undefined);
+const layerAsset=JSON.parse(strFromU8(layerFiles['asset.json']));
+assert.deepEqual(layerAsset.paintLayer.frames,[{file:'paint-layer/frame-0.png'},{file:null}]);
+for(const modify of [
+ f=>delete f['paint-layer/frame-0.png'],
+ f=>{const wrong=Buffer.from(png);wrong.writeUInt32BE(512,16);f['paint-layer/frame-0.png']=wrong;},
+ f=>{const a=structuredClone(layerAsset);a.animations[0].keyframes[0].paintFrame=2;f['asset.json']=strToU8(JSON.stringify(a));},
+ f=>{const a=structuredClone(layerAsset);a.editor.paintFrame=-1;f['asset.json']=strToU8(JSON.stringify(a));}
+]){const malformed={...layerFiles};modify(malformed);await assert.rejects(readProject(new Blob([zipSync(malformed)])));}
+const layerLegacy=await readProject(new Blob([JSON.stringify(projectData(layered,atlas,settings))]));
+assert.deepEqual(layerLegacy.state.paintLayer,layered.paintLayer);
 for(const mutate of [a=>a.version=99,a=>a.joints[1].parentPartId=123,a=>a.parts[0].restTransform.rotation=[0,0,0,0],a=>a.animations[0].keyframes[0].jointTransforms[2]=null]){
  const bad=structuredClone(asset);mutate(bad);assert.throws(()=>stateFromAsset(bad));
 }
