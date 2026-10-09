@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
-import {validateLayout} from './atlas-layout.js';
+import {validateLayout,legacyLayout} from './atlas-layout.js';
+import {projectFileData} from './asset-project.js';
 import {zipSync,strToU8} from './vendor/fflate.js';
 
 const matrix=p=>new THREE.Matrix4().compose(new THREE.Vector3(...p.p),new THREE.Quaternion(...p.q),new THREE.Vector3(1,1,1));
@@ -27,21 +28,22 @@ function meshData(box,geometry){
     indices:Array.from(geometry.index.array)
   };
 }
-export function assetDescription(state,meshes,textureSize=state.textureSize){
+export function assetDescription(state,meshes,textureSize=state.textureSize,settings={}){
   const root=state.boxes.find(b=>b.parent===null),rootFrame=matrix(root),byId=new Map(state.boxes.map(b=>[b.id,b]));
   const binds=new Map(state.boxes.map(b=>[b.id,b.parent===null?{c0:new THREE.Matrix4(),c1:new THREE.Matrix4()}:bindFrames(b,byId.get(b.parent))]));
   const animations=state.animations||[{id:0,name:'Animation 1',frames:state.frames||[]}];
   return {
-    format:'cube-studio-asset',version:1,name:state.name?.trim()||'Cube Asset',
+    format:'cube-studio-asset',version:2,name:state.name?.trim()||'Cube Asset',
+    editor:{version:1,nextId:state.nextId??Math.max(...state.boxes.map(b=>b.id))+1,nextAnimationId:state.nextAnimationId??Math.max(...animations.map(a=>a.id))+1,animation:state.animation??0,frame:state.frame??0,gridSize:state.gridSize??.25,atlasLayout:structuredClone(state.atlasLayout||legacyLayout(state.boxes,textureSize)),parts:Object.fromEntries(state.boxes.map(b=>[b.id,{slot:b.slot,...(b.normal?{normal:[...b.normal]}:{})}])),settings:structuredClone(settings)},
     coordinates:{handedness:'right',up:'+Y',forward:'-Z',units:'studs',quaternionOrder:'xyzw',rotation:'active-local-to-parent',conversionApplied:true,sourceToAsset:[[-1,0,0],[0,1,0],[0,0,-1]]},
     texture:{file:'atlas.png',width:textureSize,height:textureSize,filter:'nearest',uvOrigin:'bottom-left',imageOrigin:'top-left',colorSpace:'srgb'},
     rigRoot:{name:'RigRoot',restTransform:transform(rootFrame),anchored:true,visible:false},
-    parts:state.boxes.map(b=>({id:b.id,name:`Cube_${b.id}`,shape:'box',size:[...dimensions(b)],restTransform:transform(matrix(b)),editorAnchor:b.anchor,anchored:false,canCollide:false,massless:true,baseColor:b.color,texture:'atlas.png',mesh:meshData(b,meshes.get(b.id).geometry)})),
+    parts:state.boxes.map(b=>({id:b.id,name:b.name||`Cube_${b.id}`,shape:'box',size:[...dimensions(b)],restTransform:transform(matrix(b)),editorAnchor:b.anchor,anchored:false,canCollide:false,massless:true,baseColor:b.color,texture:'atlas.png',mesh:meshData(b,meshes.get(b.id).geometry)})),
     joints:state.boxes.map(b=>{
       const {c0,c1}=binds.get(b.id),axis=b.parent===null?'omni':b.axis||'omni';
       return {id:b.id,name:`Joint_${b.id}`,parentPartId:b.parent,childPartId:b.id,type:'Motor6D',c0:transform(c0),c1:transform(c1),authoringConstraint:{axis,axisSpace:'parent-part-local',axisVector:axis==='omni'?null:vector(...['x','y','z'].map(a=>a===axis?1:0))}};
     }),
-    animations:animations.map((a,index)=>({id:a.id??index,name:a.name,loop:true,interpolation:'linear-time-quaternion-slerp',keyframes:(a.frames.length?a.frames:[{time:0,pose:Object.fromEntries(state.boxes.map(b=>[b.id,b]))}]).map(f=>({time:f.time,jointTransforms:Object.fromEntries(state.boxes.map(b=>{
+    animations:animations.map((a,index)=>({id:a.id??index,name:a.name,loop:true,interpolation:'linear-time-quaternion-slerp',keyframes:a.frames.map(f=>({time:f.time,jointTransforms:Object.fromEntries(state.boxes.map(b=>{
       const {c0,c1}=binds.get(b.id),parent=b.parent===null?rootFrame:matrix(f.pose[b.parent]||byId.get(b.parent));
       return [b.id,transform(c0.clone().invert().multiply(parent.clone().invert()).multiply(matrix(f.pose[b.id]||b)).multiply(c1))];
     }))}))}))
@@ -50,13 +52,12 @@ export function assetDescription(state,meshes,textureSize=state.textureSize){
 export function triggerDownload(data,filename,type){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);}
 export function projectData(state,atlas){return {format:'cube-studio',version:3,state:structuredClone(state),atlas:atlas.toDataURL('image/png')};}
 export const exportFilename=state=>(state.name?.trim()||'cube-asset').replace(/[<>:\"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/g,'').slice(0,80)||'cube-asset';
-export function downloadProject(state,atlas){triggerDownload(JSON.stringify(projectData(state,atlas)),exportFilename(state)+'.cube','application/json');}
-const bundleGuide=`CUBE STUDIO ASSET BUNDLE v1
+const bundleGuide=`CUBE STUDIO PROJECT / ASSET ZIP v2
 
-asset.json describes the complete rig and every animation. atlas.png is its one shared texture. model.cube is an exact editable backup for Cube Studio. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
+asset.json describes the complete rig and every animation. atlas.png is its one shared texture. Open this same ZIP in Cube Studio to resume editing. The editor field holds atlas placement and workspace settings; parts, joints and animations are stored only once. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
 
 COORDINATES
-All asset.json geometry and transforms are already in right-handed Roblox coordinates: +Y up, -Z forward, studs. The author's +Z front is converted with a proper 180-degree Y rotation. Do not convert again. model.cube alone retains the original editor coordinates.
+All asset.json geometry and transforms are already in right-handed Roblox coordinates: +Y up, -Z forward, studs. The author's +Z front is converted with a proper 180-degree Y rotation. Do not convert again. Cube Studio converts these back when opening the ZIP. The editor atlas layout and surface normals use editor coordinates.
 A transform is {position:[x,y,z],rotation:[x,y,z,w]}; rotation is a normalized quaternion, not Euler angles. Part restTransform and rigRoot.restTransform are world transforms. Compose translation * quaternion rotation, with unit scale.
 
 PARTS AND TEXTURE
@@ -68,21 +69,22 @@ childWorld = parentWorld * c0 * jointTransform * inverse(c1)
 At rest, jointTransform is identity. Joint ids match their child part ids. Constraint axes and signed axisVector values are parent-part-local authoring metadata, not physical Motor6D limits. Animated poses already include these constraints. editorAnchor is an authoring pin; animated parts remain unanchored and non-colliding.
 
 ANIMATIONS
-Every animation row is separate. Keyframe time is in seconds. jointTransforms maps each joint id to its local animation transform, including the joint from rigRoot to the first cube. Build nested poses using joint hierarchy and part names. Slerp rotations and linearly interpolate translations between keyframes. These poses belong to this exact rig; another rig needs retargeting. Creating/uploading Roblox mesh, texture, and animation assets is a later import step.
+Every animation row is separate. Empty keyframes means an unanimated row; use the rig rest pose. The editor settings are optional for Roblox import. Keyframe time is in seconds. jointTransforms maps each joint id to its local animation transform, including the joint from rigRoot to the first cube. Build nested poses using joint hierarchy and part names. Slerp rotations and linearly interpolate translations between keyframes. These poses belong to this exact rig; another rig needs retargeting. Creating/uploading Roblox mesh, texture, and animation assets is a later import step.
 `;
-export async function bundleBytes(state,atlas,meshes){
+export async function bundleBytes(state,atlas,meshes,settings={}){
+  state=structuredClone(state);settings=structuredClone(settings);
+  const description=assetDescription(state,meshes,atlas.width,settings);
   const png=await new Promise((resolve,reject)=>atlas.toBlob(b=>b?b.arrayBuffer().then(resolve):reject(Error('Texture export failed')),'image/png'));
   return zipSync({
-    'asset.json':strToU8(JSON.stringify(assetDescription(state,meshes,atlas.width),null,2)),
+    'asset.json':strToU8(JSON.stringify(description,null,2)),
     'atlas.png':new Uint8Array(png),
-    'model.cube':strToU8(JSON.stringify(projectData(state,atlas))),
     'README.txt':strToU8(bundleGuide)
   },{level:6});
 }
-export async function downloadBundle(state,atlas,meshes){triggerDownload(await bundleBytes(state,atlas,meshes),exportFilename(state)+'.zip','application/zip');}
-export async function readProject(file){if(file.size>30*1024*1024)throw Error('Project is too large');const data=JSON.parse(await file.text()),s=data.state;const fail=()=>{throw Error('Invalid Cube Studio project');};if(data.format!=='cube-studio'||![1,2,3].includes(data.version)||!s||!Array.isArray(s.boxes)||s.boxes.length<1||s.boxes.length>128)fail();
+export async function downloadBundle(state,atlas,meshes,settings={}){triggerDownload(await bundleBytes(state,atlas,meshes,settings),exportFilename(state)+'.zip','application/zip');}
+export async function readProject(file){const data=await projectFileData(file),s=data.state;const fail=()=>{throw Error('Invalid Cube Studio project');};if(data.format!=='cube-studio'||![1,2,3].includes(data.version)||!s||!Array.isArray(s.boxes)||s.boxes.length<1||s.boxes.length>128)fail();
 const validArray=(a,length)=>Array.isArray(a)&&a.length===length&&a.every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<10000);const validQ=q=>validArray(q,4)&&Math.abs(Math.hypot(...q)-1)<.01;const ids=new Set(),slots=new Set();for(let i=0;i<s.boxes.length;i++){const b=s.boxes[i];if(!Number.isInteger(b.id)||b.id<0||ids.has(b.id)||!Number.isInteger(b.slot)||b.slot<0||b.slot>=128||slots.has(b.slot)||!validArray(b.p,3)||!validQ(b.q)||typeof b.anchor!=='boolean'||!/^#[0-9a-f]{6}$/i.test(b.color))fail();if(i===0){if(b.id!==0||b.parent!==null)fail();}else if(!ids.has(b.parent)||!validArray(b.a,3)||!validArray(b.b,3))fail();ids.add(b.id);slots.add(b.slot);if(b.size!==undefined&&(!validArray(b.size,3)||b.size.some(v=>v<.2||v>12)))fail();if(b.axis!==undefined&&!['omni','x','y','z'].includes(b.axis))fail();if(b.normal!==undefined&&(!validArray(b.normal,3)||b.normal.filter(v=>Math.abs(v)===1).length!==1||b.normal.filter(v=>v===0).length!==2))fail();}
 if(s.name!==undefined&&(typeof s.name!=='string'||s.name.length>80))fail();
 if(!Number.isInteger(s.nextId)||s.nextId<=Math.max(...ids))fail();
 const animations=data.version<3?[{id:0,name:'Animation 1',frames:s.frames}]:s.animations;if(!Array.isArray(animations)||!animations.length||animations.length>16)fail();const animationIds=new Set();for(const animation of animations){if(!Number.isInteger(animation.id)||animation.id<0||animationIds.has(animation.id)||typeof animation.name!=='string'||animation.name.length>80||!Array.isArray(animation.frames)||animation.frames.length>60)fail();animationIds.add(animation.id);let prev=-1;for(const f of animation.frames){if(typeof f.time!=='number'||!Number.isFinite(f.time)||f.time<0||f.time>60||f.time<=prev||!f.pose)fail();for(const b of s.boxes)if(!f.pose[b.id]||!validArray(f.pose[b.id].p,3)||!validQ(f.pose[b.id].q))fail();prev=f.time;}if(animation.frames.length&&animation.frames[0].time!==0)fail();}const active=data.version<3?0:s.animation;if(!Number.isInteger(active)||active<0||active>=animations.length||!Number.isInteger(s.frame)||s.frame<0||s.frame>=Math.max(1,animations[active].frames.length))fail();
-if(typeof data.atlas!=='string'||!data.atlas.startsWith('data:image/png;base64,')||data.atlas.length>24*1024*1024)fail();const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('Invalid paint texture'));image.src=data.atlas;});if(![...TEXTURE_SIZES,2048,4096].includes(image.width)||image.height!==image.width||(s.textureSize!==undefined&&s.textureSize!==image.width))fail();if(s.atlasLayout!==undefined&&!validateLayout(s.atlasLayout,s.boxes,image.width))fail();s.textureSize=Math.min(image.width,1024);return {state:normalizeModel(s),image};}
+if(typeof data.atlas!=='string'||!data.atlas.startsWith('data:image/png;base64,')||data.atlas.length>24*1024*1024)fail();const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('Invalid paint texture'));image.src=data.atlas;});if(![...TEXTURE_SIZES,2048,4096].includes(image.width)||image.height!==image.width||(s.textureSize!==undefined&&s.textureSize!==image.width))fail();if(s.atlasLayout!==undefined&&!validateLayout(s.atlasLayout,s.boxes,image.width))fail();s.textureSize=Math.min(image.width,1024);return {state:normalizeModel(s),image,editor:data.editor};}

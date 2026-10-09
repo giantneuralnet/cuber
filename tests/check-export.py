@@ -2,9 +2,9 @@
 import sys,zipfile,json,struct,math,base64
 with zipfile.ZipFile(sys.argv[1]) as z:
     assert z.testzip() is None
-    assert set(z.namelist()) == {'asset.json','atlas.png','model.cube','README.txt'}
-    project=json.loads(z.read('model.cube')); s=project['state']; asset=json.loads(z.read('asset.json'))
-    assert asset['format']=='cube-studio-asset' and asset['version']==1
+    assert set(z.namelist()) == {'asset.json','atlas.png','README.txt'}
+    project=json.load(open(sys.argv[2])); s=project['state']; asset=json.loads(z.read('asset.json'))
+    assert asset['format']=='cube-studio-asset' and asset['version']==2
     assert asset['coordinates']['forward']=='-Z' and asset['coordinates']['up']=='+Y'
     png=z.read('atlas.png');resolution=s['textureSize']
     assert png[:8]==b'\x89PNG\r\n\x1a\n' and struct.unpack('>II',png[16:24])==(resolution,resolution)
@@ -41,7 +41,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert len(asset['animations'])==len(s['animations'])
     for animation,source in zip(asset['animations'],s['animations']):
         assert animation['id']==source['id'] and animation['name']==source['name']
-        frames=source['frames'] or [{'time':0,'pose':{str(b['id']):b for b in s['boxes']}}]
+        frames=source['frames']
         assert len(animation['keyframes'])==len(frames)
         for f,original in zip(animation['keyframes'],frames):
             assert f['time']==original['time']

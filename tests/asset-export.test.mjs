@@ -34,7 +34,7 @@ const data=assetDescription(state,meshes,256),joint=data.joints[1];
 assert.ok(matrix(data.animations[0].keyframes[0].jointTransforms[1]).elements.every((v,i)=>Math.abs(v-new T.Matrix4().elements[i])<1e-7),'rest keyframe is identity');
 const idle=matrix(data.parts[0].restTransform).multiply(matrix(joint.c0)).multiply(matrix(joint.c1).invert());
 assert.ok(idle.elements.every((v,i)=>Math.abs(v-matrix(data.parts[1].restTransform).elements[i])<1e-7),'idle joint retains rotated rest pose');
-assert.equal(data.animations[1].keyframes.length,1,'empty animation gets rest pose');
+assert.equal(data.animations[1].keyframes.length,0,'empty animation remains editable without inventing a frame');
 assert.deepEqual(data.animations.map(a=>a.id),[5,9]);
 assert.equal(data.joints[0].parentPartId,null);
 const mesh=data.parts[1].mesh,verts=mesh.positions.map(v=>new T.Vector3(...v)),normals=mesh.normals.map(v=>new T.Vector3(...v));
@@ -47,11 +47,12 @@ assert.equal(data.texture.filter,'nearest');
 data.parts[0].size[0]=99;assert.equal(boxes[0].size[0],1,'description does not mutate project');
 const blob=new Blob(['test texture']);
 const bytes=await bundleBytes(state,{width:256,toBlob:cb=>cb(blob),toDataURL:()=> 'data:image/png;base64,dGVzdA=='},meshes),files=unzipSync(bytes);
-assert.deepEqual(Object.keys(files).sort(),['README.txt','asset.json','atlas.png','model.cube']);
+assert.deepEqual(Object.keys(files).sort(),['README.txt','asset.json','atlas.png']);
 assert.equal(JSON.parse(strFromU8(files['asset.json'])).format,'cube-studio-asset');
-assert.deepEqual(JSON.parse(strFromU8(files['model.cube'])).state,state);
+assert.equal(JSON.parse(strFromU8(files['asset.json'])).version,2);
+assert.equal(files['model.cube'],undefined,'no duplicate editable model');
 assert.equal(strFromU8(files['atlas.png']),'test texture');
-console.log('PASS: data bundle schema, XYZ hinges, connected pivots, rotated rest pose, front orientation, winding, UVs, animation rows, editable backup, and texture bytes.');
+console.log('PASS: data bundle schema, XYZ hinges, connected pivots, rotated rest pose, front orientation, winding, UVs, animation rows, editable metadata, and texture bytes.');
 // Optional real-project export also exercises the exact browser bundle builder.
 if(process.argv[2]){
  const project=JSON.parse(readFileSync(process.argv[2],'utf8')),state=project.state,png=Buffer.from(project.atlas.split(',')[1],'base64');
