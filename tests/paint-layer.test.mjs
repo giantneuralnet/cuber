@@ -26,9 +26,9 @@ assert.equal(validatePaintLayer({frame:0,frames:[{png:'bad'}]}),false);
 
 let pending=null,selected=[],recenters=0;
 const tap=new ViewCubeTap({select:view=>selected.push(view),recenter:()=>recenters++,setTimer:fn=>(pending=fn,1),clearTimer:()=>pending=null});
-tap.tap('front',10,10,0);assert.deepEqual(selected,[]);pending();
+tap.tap('front',10,10,0);assert.deepEqual(selected,['front']);pending();
 assert.deepEqual(selected,['front']);
 tap.tap('top',10,10,1000);tap.tap('top',11,12,1150);
-assert.equal(recenters,1);assert.equal(pending,null);assert.deepEqual(selected,['front']);
+assert.equal(recenters,1);assert.equal(pending,null);assert.deepEqual(selected,['front','top']);
 tap.tap('right',10,10,2000);tap.cancel();assert.equal(pending,null);
 console.log('PASS: independent texture frames, limits, deletion reference repair, legacy defaults, and single/double/drag view-cube gestures.');

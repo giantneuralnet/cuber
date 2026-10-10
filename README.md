@@ -93,3 +93,12 @@ The upper-left view cube is present in every mode. Tap a face for an orthographi
 The export popup has an Asset name field. Opening the popup leaves the field unfocused and does not select its contents. The saved name is included in asset.json and model.cube and supplies both ZIP and project-copy filenames; unsafe filename characters are replaced. Blank names use cube-asset.
 
 `node tests/editor-geometry.test.mjs` covers grid snap and all-frame connectivity, exploded offsets, pixel-center multi-face/multi-cube brush coverage and occlusion. Portrait browser checks cover deselection, grid/paint Undo, exact color sampling, front/top orthographic views, the 320px paint layout, a brush crossing a face edge, and unfocused named exports. A named bundle downloaded while exploded reconstructs the original model coordinates correctly. Physical iOS device validation remains outstanding.
+
+
+## Build controls update
+
+Build opens with Select active, including new and restored projects. Adding a cube copies its parent's dimensions and centers it on the tapped face. Six face-center handles replace corner handles; hidden rear handles do not intercept touches. Selected cubes show only their incoming joint and immediate child joints. The floor remains transparent, and scene fog is disabled.
+
+A view-cube tap changes the orthographic view immediately. A second tap within the double-tap interval recenters that view. A camera-aligned X/Y/Z indicator sits below the cube. Enabled mirror axes also resize both opposing faces of a cube lying on that mirror plane, including the root.
+
+Shape drags use a lightweight rest-rig preview, keeping existing UVs so paint stretches live. Atlas packing, base/overlay resampling, and saved-pose projection happen once on release. UV buffers are updated in place; meshes and geometry are not rebuilt. Autosave waits until the drag commits. Undo restores geometry, all animation rows, and paint layers together. Browser checks at 390×844 and 320×740 cover these controls and verify zero PNG encodes or atlas/geometry rebuilds during a resize of a 254-keyframe project. Physical iPhone verification remains outstanding.
