@@ -10,7 +10,7 @@ python3 -m http.server 4173 --directory dist
 
 Open http://localhost:4173. All libraries are vendored; no package installation or build is required.
 
-The editable HTML, CSS, and JavaScript source lives in `dist/`; it can be served directly by any static web server. The browser title currently uses Cube Studio.
+The editable HTML, CSS, and JavaScript source lives in `dist/`; it can be served directly by any static web server. The browser title uses Cuber.
 
 Run the automated checks with Node.js 22 or newer:
 
@@ -27,8 +27,8 @@ node --test tests/*.test.mjs
 - Paint with a raycast brush or fill one face. Toggle X, Y, and Z mirroring separately or together; the mirror planes cross the root cube’s center and paint matching existing surfaces, including hidden faces. All faces occupy separately packed rectangles of one shared atlas. Pixels use nearest-neighbor sampling and solid integer brush stamps. Each face gets the same texels per stud (including non-square faces); the common density reduces only if the whole model exceeds atlas capacity. Resizing stretches the existing paint across each new face with nearest-neighbor resampling; the atlas still allocates the same texels per stud. Paint’s Texture control sets its resolution to 256, 512, or 1024 pixels square. Resizing preserves paint and supports undo; project and bundle exports retain the chosen resolution.
 - In Animate, tap a cube to pin/unpin it. Drag an unpinned cube to pose the connected rig. Add a keyframe to duplicate the pose, then drag to edit it. Frame edits save when the drag ends. Parts do not collide, and joint endpoints are projected into exact alignment on every simulation frame.
 - Use + Row for a separate animation. Each row has its own playback and keyframes, and exports as a separate KeyframeSequence. The scrollable timeline shows one and a half rows, with + Row and joint visibility beside Mirror. Tap a frame to select it; tap the selected frame to toggle its Time, Copy, Paste, Reset pose, and Delete menu. Reset pose restores that frame to the built pose; copy/paste also works across rows. Paste preserves the destination time.
-- Undo/redo covers topology, moving, resizing, painting, joint axes, pins, keyframes, paste, and project import. The current project, atlas, keyframes, grid, and mode save automatically to localStorage and restore on page load. Undo history is session-only. The folder menu still saves portable .cube copies.
-- Export creates cube-asset.zip containing asset.json (parts, joints, all animation rows, local geometry and UVs), atlas.png, model.cube, and a format guide. The asset description uses explicit Roblox coordinates and quaternion conventions. A later importer can construct the rig directly in Roblox; no model XML is generated.
+- Undo/redo covers topology, moving, resizing, painting, joint axes, pins, keyframes, paste, and project import. The current project, atlas, keyframes, grid, and mode save automatically to localStorage and restore on page load. Undo history is session-only. The folder menu saves the same editable asset ZIP used by Export.
+- Export and Save project create a ZIP containing asset.json (parts, joints, animation rows, reference geometry/UVs and editor metadata), atlas.png, optional paint-layer PNGs, README.txt, ROBLOX-IMPORT.md, and a generic Roblox preparation/import toolkit. The toolkit creates native block Parts and Motor6Ds with SurfaceGui face images. No model XML, mesh assets, account IDs, NPC AI, or separate model.cube is included.
 
 ## Implementation
 
@@ -104,3 +104,7 @@ A view-cube tap changes the orthographic view immediately. A second tap within t
 Shape drags use a lightweight rest-rig preview, keeping existing UVs so paint stretches live. Atlas packing, base/overlay resampling, and saved-pose projection happen once on release. UV buffers are updated in place; meshes and geometry are not rebuilt. Autosave waits until the drag commits. Undo restores geometry, all animation rows, and paint layers together. Browser checks at 390×844 and 320×740 cover these controls and verify zero PNG encodes or atlas/geometry rebuilds during a resize of a 254-keyframe project. Physical iPhone verification remains outstanding.
 
 Imported rigs retain their inset or external joint pivots during movement and resizing. Face bounds only apply to actual contacting-face attachments. Screen-projected movement avoids unstable ray/plane intersections when the sliding plane is viewed edge-on. Atlas resampling uses one pixel-copy pass with nearest sampling and padded borders, preserving base paint and transparent animation layers. Repeated overlay frames are remapped once. Local Chrome profiling on the 32-part, 254-keyframe Sphinx measured atlas repacking at 8–11 ms (previously 180–200 ms), and total resize release at 35–42 ms (previously 273–300 ms).
+
+## Bundled Roblox import toolkit
+
+Edit the canonical files in `dist/roblox/`, then run `node scripts/embed-roblox-import.mjs` to refresh `dist/roblox-import-files.js`. The generated module embeds the guide and scripts so every ZIP download works without extra network requests. `tests/roblox-import.test.mjs` verifies source synchronization and exercises the Python preparer on a real exported fixture, including face mapping, thin crops, overlay index zero, and empty/duplicate animation rows. The Lua importer/player still require integration checks in the target Roblox Studio experience.

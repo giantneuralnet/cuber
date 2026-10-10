@@ -1,3 +1,4 @@
+import {robloxImportFiles} from './roblox-import-files.js?v=1';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
 import {validateLayout,legacyLayout} from './atlas-layout.js';
@@ -59,6 +60,7 @@ const bundleGuide=`CUBER PROJECT / ASSET ZIP v2
 asset.json describes the complete rig and every animation. atlas.png is its one shared texture. Open this same ZIP in Cuber to resume editing. The editor field holds atlas placement and workspace settings; parts, joints and animations are stored only once. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
 
 ROBLOX IMPORT: USE PARTS, NOT MESHES
+Start with ROBLOX-IMPORT.md and the scripts in roblox/. The bundled preparer and native-Part importer read this asset directly. They include no game-specific behavior or image IDs.
 Create one native Roblox Part with Shape = Enum.PartType.Block for each entry in parts. Set its Size from size and its CFrame from restTransform, and connect the Parts using the supplied Motor6D joints. Do not create MeshParts or SpecialMeshes, combine the boxes into a mesh, or use FBX/OBJ mesh import. The mesh field is reference geometry and face texture-coordinate data only; it is not an instruction to create a Roblox mesh.
 
 COORDINATES
@@ -88,6 +90,7 @@ export async function bundleBytes(state,atlas,meshes,settings={}){
     'asset.json':strToU8(JSON.stringify(description,null,2)),
     'atlas.png':new Uint8Array(png),
     'README.txt':strToU8(bundleGuide),
+    ...Object.fromEntries(Object.entries(robloxImportFiles).map(([name,text])=>[name,strToU8(text)])),
     ...Object.fromEntries((state.paintLayer?.frames||[]).flatMap((f,i)=>f.png?[[`paint-layer/frame-${i}.png`,Uint8Array.from(atob(f.png.split(',')[1]),c=>c.charCodeAt(0))]]:[]))
   },{level:6});
 }
