@@ -54,19 +54,23 @@ export function assetDescription(state,meshes,textureSize=state.textureSize,sett
 export function triggerDownload(data,filename,type){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);}
 export function projectData(state,atlas){return {format:'cube-studio',version:3,state:structuredClone(state),atlas:atlas.toDataURL('image/png')};}
 export const exportFilename=state=>(state.name?.trim()||'cube-asset').replace(/[<>:\"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/g,'').slice(0,80)||'cube-asset';
-const bundleGuide=`CUBE STUDIO PROJECT / ASSET ZIP v2
+const bundleGuide=`CUBER PROJECT / ASSET ZIP v2
 
-asset.json describes the complete rig and every animation. atlas.png is its one shared texture. Open this same ZIP in Cube Studio to resume editing. The editor field holds atlas placement and workspace settings; parts, joints and animations are stored only once. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
+asset.json describes the complete rig and every animation. atlas.png is its one shared texture. Open this same ZIP in Cuber to resume editing. The editor field holds atlas placement and workspace settings; parts, joints and animations are stored only once. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
+
+ROBLOX IMPORT: USE PARTS, NOT MESHES
+Create one native Roblox Part with Shape = Enum.PartType.Block for each entry in parts. Set its Size from size and its CFrame from restTransform, and connect the Parts using the supplied Motor6D joints. Do not create MeshParts or SpecialMeshes, combine the boxes into a mesh, or use FBX/OBJ mesh import. The mesh field is reference geometry and face texture-coordinate data only; it is not an instruction to create a Roblox mesh.
 
 COORDINATES
-All asset.json geometry and transforms are already in right-handed Roblox coordinates: +Y up, -Z forward, studs. The author's +Z front is converted with a proper 180-degree Y rotation. Do not convert again. Cube Studio converts these back when opening the ZIP. The editor atlas layout and surface normals use editor coordinates.
+All asset.json geometry and transforms are already in right-handed Roblox coordinates: +Y up, -Z forward, studs. The author's +Z front is converted with a proper 180-degree Y rotation. Do not convert again. Cuber converts these back when opening the ZIP. The editor atlas layout and surface normals use editor coordinates.
 A transform is {position:[x,y,z],rotation:[x,y,z,w]}; rotation is a normalized quaternion, not Euler angles. Part restTransform and rigRoot.restTransform are world transforms. Compose translation * quaternion rotation, with unit scale.
 
 PARTS AND TEXTURE
-Each part has a stable numeric id, box dimensions, rest pose, and local mesh data. positions already include the part's size; do not multiply by size again. indices are zero-based counterclockwise triangle vertex indices. positions, normals, and uvs have matching indices. UVs use a bottom-left origin, while the PNG has its usual top-left image origin. Preserve the UVs and use nearest-neighbor filtering where supported. All parts share atlas.png; the geometry/UV data is included so a later importer can create painted meshes without guessing face placement. baseColor is the original authoring swatch, not an additional tint to multiply over the already painted atlas.
+Each part has a stable numeric id, box dimensions, rest pose, and reference geometry. Use size for the Roblox Part dimensions. All parts share atlas.png. Use the reference normals and UVs to locate and orient each face's painted region, then display the artwork on the native Part faces using a Part-compatible face-image approach. Native Parts do not accept arbitrary mesh UVs; do not switch to MeshParts to apply the atlas. Preserve pixel art with nearest-neighbor filtering where supported. baseColor is the original authoring swatch, not an additional tint to multiply over the already painted atlas.
+Reference positions already include the part's size; do not multiply them by size again. indices are zero-based counterclockwise triangle vertex indices. positions, normals, and uvs have matching indices. UVs use a bottom-left origin, while the PNG has its usual top-left image origin.
 
 JOINTS
-Create the invisible anchored rigRoot, then all parts and Motor6Ds. parentPartId:null refers to rigRoot. Other parentPartId and childPartId values refer to part ids. c0 and c1 are the two part-local bind frames. The equation is:
+Create rigRoot as an invisible anchored Roblox Part, then all block Parts and Motor6Ds. parentPartId:null refers to rigRoot. Other parentPartId and childPartId values refer to part ids. c0 and c1 are the two part-local bind frames. The equation is:
 childWorld = parentWorld * c0 * jointTransform * inverse(c1)
 At rest, jointTransform is identity. Joint ids match their child part ids. Constraint axes and signed axisVector values are parent-part-local authoring metadata, not physical Motor6D limits. Animated poses already include these constraints. editorAnchor is an authoring pin; animated parts remain unanchored and non-colliding.
 
@@ -74,7 +78,7 @@ PAINT LAYER
 The optional paintLayer is one transparent animated overlay above atlas.png. Each PNG uses the exact same dimensions and UV layout as the base. Null file means a fully transparent frame. Use source-over alpha composition, nearest filtering, and select the zero-based paintFrame referenced by each animation keyframe. Hold that texture until the next pose keyframe; there is no separate texture clock. Keep overlays separate when importing to Roblox; do not replace or tint the base atlas.
 
 ANIMATIONS
-Every animation row is separate. Empty keyframes means an unanimated row; use the rig rest pose. The editor settings are optional for Roblox import. Keyframe time is in seconds. jointTransforms maps each joint id to its local animation transform, including the joint from rigRoot to the first cube. Build nested poses using joint hierarchy and part names. Slerp rotations and linearly interpolate translations between keyframes. These poses belong to this exact rig; another rig needs retargeting. Creating/uploading Roblox mesh, texture, and animation assets is a later import step.
+Every animation row is separate. Empty keyframes means an unanimated row; use the rig rest pose. The editor settings are optional for Roblox import. Keyframe time is in seconds. jointTransforms maps each joint id to its local animation transform, including the joint from rigRoot to the first cube. Build nested poses using joint hierarchy and part names. Slerp rotations and linearly interpolate translations between keyframes. These poses belong to this exact rig; another rig needs retargeting. Creating the Roblox Part rig and uploading texture and animation assets is a later import step; no mesh assets are needed.
 `;
 export async function bundleBytes(state,atlas,meshes,settings={}){
   state=structuredClone(state);settings=structuredClone(settings);
