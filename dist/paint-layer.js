@@ -1,4 +1,4 @@
-import {padFace} from './atlas-layout.js';
+import {repackPixels} from './atlas-layout.js';
 
 export const freshPaintLayer=()=>({frame:0,frames:[{png:''}]});
 export function validatePaintLayer(layer){
@@ -8,7 +8,7 @@ export function validatePaintLayer(layer){
 export function appendPaintFrame(layer){if(layer.frames.length>=16)return false;layer.frames.push({png:layer.frames[layer.frame].png});layer.frame=layer.frames.length-1;return true;}
 export function deletePaintFrame(layer,animations=[]){if(layer.frames.length<2)return false;const removed=layer.frame;layer.frames.splice(removed,1);layer.frame=Math.max(0,removed-1);for(const a of animations)for(const frame of a.frames){const selected=frame.paintFrame??0;frame.paintFrame=selected>removed?selected-1:selected===removed?Math.min(removed,layer.frames.length-1):selected;}return true;}
 export const paintFrameForPose=(frame,layer)=>Math.max(0,Math.min(layer.frames.length-1,frame?.paintFrame??0));
-const canvas=size=>{const c=document.createElement('canvas');c.width=c.height=size;return c;};
+const canvas=size=>{const c=document.createElement('canvas');c.width=c.height=size;c.getContext('2d',{willReadFrequently:true});return c;};
 
 // The base and overlay remain independently editable. Only the preview is composited.
 export class PaintLayerSurface {
@@ -29,8 +29,8 @@ export class PaintLayerSurface {
  remap(png,boxes,layout,oldLayout){
   if(!png)return '';if(layout.signature===oldLayout?.signature)return png;
   const source=this.source(png),next=canvas(layout.size),ctx=next.getContext('2d');ctx.imageSmoothingEnabled=false;
-  for(const box of boxes)for(let face=0;face<6;face++){const key=box.slot*6+face,r=layout.faces[key],old=oldLayout?.faces[key];if(old)ctx.drawImage(source,old.x,old.y,old.w,old.h,r.x,r.y,r.w,r.h);padFace(ctx,next,r);}
+  repackPixels(ctx,next,boxes,layout,source,oldLayout,{overlay:true});
   const result=next.toDataURL('image/png');this.cache.set(result,next);return result;
  }
- repack(boxes,layout,oldLayout){for(const frame of this.getLayer().frames)frame.png=this.remap(frame.png,boxes,layout,oldLayout);this.active=null;}
+ repack(boxes,layout,oldLayout){const remapped=new Map();for(const frame of this.getLayer().frames){if(!remapped.has(frame.png))remapped.set(frame.png,this.remap(frame.png,boxes,layout,oldLayout));frame.png=remapped.get(frame.png);}this.active=null;}
 }

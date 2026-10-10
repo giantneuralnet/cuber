@@ -7,7 +7,22 @@ function attempt(width){const faces={},rows=[];let bottom=0;for(const r of rects
 const width=Math.min(size,Math.max(...rects.map(r=>r.w+2),Math.ceil(Math.sqrt(rects.reduce((a,r)=>a+(r.w+2)*(r.h+2),0)))));return attempt(width)||attempt(size);}
 let hi=size/32,lo=0,found=pack(hi);if(found)return found;for(let i=0;i<20;i++){const d=(lo+hi)/2,result=pack(d);if(result){lo=d;found=result;}else hi=d;}if(!found)throw Error('Texture atlas is full');return found;}
 export function padFace(ctx,atlas,r){ctx.imageSmoothingEnabled=false;ctx.clearRect(r.x-1,r.y,1,r.h);ctx.clearRect(r.x+r.w,r.y,1,r.h);ctx.drawImage(atlas,r.x,r.y,1,r.h,r.x-1,r.y,1,r.h);ctx.drawImage(atlas,r.x+r.w-1,r.y,1,r.h,r.x+r.w,r.y,1,r.h);ctx.clearRect(r.x-1,r.y-1,r.w+2,1);ctx.clearRect(r.x-1,r.y+r.h,r.w+2,1);ctx.drawImage(atlas,r.x-1,r.y,r.w+2,1,r.x-1,r.y-1,r.w+2,1);ctx.drawImage(atlas,r.x-1,r.y+r.h-1,r.w+2,1,r.x-1,r.y+r.h,r.w+2,1);}
-export function repackPixels(ctx,atlas,boxes,layout,source,oldLayout){ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,layout.size,layout.size);for(const b of boxes)for(let f=0;f<6;f++){const key=b.slot*6+f,r=layout.faces[key],old=oldLayout?.faces[key];ctx.save();ctx.beginPath();ctx.rect(r.x,r.y,r.w,r.h);ctx.clip();ctx.fillStyle=b.color;ctx.fillRect(r.x,r.y,r.w,r.h);if(old&&source)ctx.drawImage(source,old.x,old.y,old.w,old.h,r.x,r.y,r.w,r.h);ctx.restore();padFace(ctx,atlas,r);}}
+// Repack all faces and their gutters in one CPU pass. Drawing hundreds of
+// tiny borders from a canvas back into itself forces expensive GPU readbacks.
+export function repackPixelData(source,boxes,layout,oldLayout,{overlay=false}={}){
+ const data=new Uint8ClampedArray(layout.size*layout.size*4),out=new Uint32Array(data.buffer),pixels=source&&new Uint32Array(source.data.buffer,source.data.byteOffset,source.data.byteLength/4);
+ for(const box of boxes)for(let face=0;face<6;face++){
+  const key=box.slot*6+face,r=layout.faces[key],old=oldLayout?.faces[key],hex=parseInt((box.color||'#f4f7fc').slice(1),16),red=hex>>>16,green=hex>>>8&255,blue=hex&255,fill=(0xff000000|blue<<16|green<<8|red)>>>0;
+  const xs=new Int32Array(r.w+2);if(source&&old)for(let x=-1;x<=r.w;x++)xs[x+1]=Math.max(0,Math.min(source.width-1,Math.floor(old.x+(Math.max(0,Math.min(r.w-1,x))+.5)*old.w/r.w)));
+  for(let y=-1;y<=r.h;y++){
+   const dest=(r.y+y)*layout.size+r.x-1,sy=source&&old?Math.max(0,Math.min(source.height-1,Math.floor(old.y+(Math.max(0,Math.min(r.h-1,y))+.5)*old.h/r.h)))*source.width:0;
+   for(let x=0;x<r.w+2;x++){const index=dest+x;if(!source||!old){out[index]=overlay?0:fill;continue;}const src=sy+xs[x],alpha=source.data[src*4+3];if(overlay||alpha===255)out[index]=pixels[src];else if(!alpha)out[index]=fill;else{const offset=index*4,inverse=255-alpha;data[offset]=(source.data[src*4]*alpha+red*inverse)/255;data[offset+1]=(source.data[src*4+1]*alpha+green*inverse)/255;data[offset+2]=(source.data[src*4+2]*alpha+blue*inverse)/255;data[offset+3]=255;}}
+  }
+ }
+ return data;
+}
+export function sourcePixels(source){if(!source)return null;if(source.data&&source.width)return source;let canvas=source;if(!source.getContext){canvas=document.createElement('canvas');canvas.width=source.width;canvas.height=source.height;canvas.getContext('2d',{willReadFrequently:true}).drawImage(source,0,0);}return canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height);}
+export function repackPixels(ctx,atlas,boxes,layout,source,oldLayout,options){const data=repackPixelData(sourcePixels(source),boxes,layout,oldLayout,options);ctx.putImageData(new ImageData(data,layout.size,layout.size),0,0);}
 // Integer scanlines avoid antialiasing and partially transparent brush-edge pixels.
 export function stampPixelBrush(ctx,x,y,diameter){const d=Math.max(1,Math.round(diameter)),startX=Math.floor(x)-Math.floor(d/2),startY=Math.floor(y)-Math.floor(d/2),radius=d/2;for(let row=0;row<d;row++){const dy=row+.5-radius;let left=0,right=d-1;while(left<d&&(left+.5-radius)**2+dy*dy>radius*radius)left++;while(right>=left&&(right+.5-radius)**2+dy*dy>radius*radius)right--;if(right>=left)ctx.fillRect(startX+left,startY+row,right-left+1,1);}}
 
