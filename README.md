@@ -1,4 +1,4 @@
-# Cube Studio
+# Cuber
 
 A static, mobile-first cube modeler. Build connected cubes, paint their shared texture atlas, and pose a gravity-free articulated rig in keyframes.
 
@@ -9,6 +9,14 @@ python3 -m http.server 4173 --directory dist
 ```
 
 Open http://localhost:4173. All libraries are vendored; no package installation or build is required.
+
+The editable HTML, CSS, and JavaScript source lives in `dist/`; it can be served directly by any static web server. The browser title currently uses Cube Studio.
+
+Run the automated checks with Node.js 22 or newer:
+
+```sh
+node --test tests/*.test.mjs
+```
 
 - Tap a face to attach a cube; Erase removes a cube and its descendant branch.
 - Mirror X/Y/Z switches stay available in every mode. Build mirrors placement onto existing opposite surfaces, and mirrors moving, resizing, and erasing matching cubes. The same switches control Paint mirroring and reflected physical posing in Animate.
