@@ -43,7 +43,7 @@ const settings={mode:'paint',tool:'fill',color:'#123456',palette:['#123456','#ff
 const png=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(png);png.writeUInt32BE(256,16);png.writeUInt32BE(256,20);
 const atlas={width:256,toBlob:cb=>cb(new Blob([png])),toDataURL:()=>`data:image/png;base64,${png.toString('base64')}`};
 const meshes=meshMap(state),bytes=await bundleBytes(state,atlas,meshes,settings),files=unzipSync(bytes),loaded=await readProject(new Blob([bytes]));
-assert.deepEqual(Object.keys(files).sort(),['README.txt','ROBLOX-IMPORT.md','asset.json','atlas.png','roblox/CuberAnimationPlayer.client.lua','roblox/CuberImporter.lua','roblox/prepare_cuber.py']);
+assert.deepEqual(Object.keys(files).sort(),['README.txt','ROBLOX-IMPORT.md','asset.json','atlas.png','model.fbx','roblox/CuberAnimationPlayer.client.lua','roblox/CuberImporter.lua','roblox/prepare_cuber.py']);
 sameState(state,loaded.state);assert.deepEqual(loaded.editor,settings);assert.deepEqual(Buffer.from(files['atlas.png']),png);
 const savedAgain=await readProject(new Blob([await bundleBytes(loaded.state,atlas,meshMap(loaded.state),loaded.editor)]));sameState(state,savedAgain.state);
 const legacy=projectData(state,atlas);sameState(state,(await readProject(new Blob([JSON.stringify(legacy)]))).state);

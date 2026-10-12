@@ -1,3 +1,4 @@
+import {fbxBytes} from './fbx-export.js?v=3';
 import {robloxImportFiles} from './roblox-import-files.js?v=2';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
@@ -57,6 +58,8 @@ export function projectData(state,atlas){return {format:'cube-studio',version:3,
 export const exportFilename=state=>(state.name?.trim()||'cube-asset').replace(/[<>:\"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/g,'').slice(0,80)||'cube-asset';
 const bundleGuide=`CUBER PROJECT / ASSET ZIP v2
 
+model.fbx is an optional mesh interchange copy with a bone rig, baked motion, and an embedded current-frame PNG. If the current texture layer changes the preview, fbx-atlas.png is its flattened texture; atlas.png remains the editable base. For native Roblox Parts, use the bundled importer and ignore model.fbx.
+
 asset.json describes the complete rig and every animation. atlas.png is its one shared texture. Open this same ZIP in Cuber to resume editing. The editor field holds atlas placement and workspace settings; parts, joints and animations are stored only once. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
 
 ROBLOX IMPORT: USE PARTS, NOT MESHES
@@ -82,19 +85,25 @@ The optional paintLayer is one transparent animated overlay above atlas.png. Eac
 ANIMATIONS
 Every animation row is separate. Empty keyframes means an unanimated row; use the rig rest pose. The editor settings are optional for Roblox import. Keyframe time is in seconds. jointTransforms maps each joint id to its local animation transform, including the joint from rigRoot to the first cube. Build nested poses using joint hierarchy and part names. Slerp rotations and linearly interpolate translations between keyframes. These poses belong to this exact rig; another rig needs retargeting. Creating the Roblox Part rig and uploading texture and animation assets is a later import step; no mesh assets are needed.
 `;
-export async function bundleBytes(state,atlas,meshes,settings={}){
+export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas){
   state=structuredClone(state);settings=structuredClone(settings);
   const description=assetDescription(state,meshes,atlas.width,settings);
-  const png=await new Promise((resolve,reject)=>atlas.toBlob(b=>b?b.arrayBuffer().then(resolve):reject(Error('Texture export failed')),'image/png'));
+  const encode=canvas=>new Promise((resolve,reject)=>canvas.toBlob(b=>b?b.arrayBuffer().then(resolve,reject):reject(Error('Texture export failed')),'image/png'));
+  const [base,preview]=await Promise.all([encode(atlas),fbxAtlas===atlas?null:encode(fbxAtlas)]);
+  const png=new Uint8Array(base),fbxPng=preview?new Uint8Array(preview):png;
+  const separateTexture=png.length!==fbxPng.length||png.some((v,i)=>v!==fbxPng[i]);
+  const textureFilename=separateTexture?'fbx-atlas.png':'atlas.png';
   return zipSync({
     'asset.json':strToU8(JSON.stringify(description,null,2)),
-    'atlas.png':new Uint8Array(png),
+    'atlas.png':png,
+    'model.fbx':fbxBytes(description,fbxPng,{textureFilename}),
+    ...(separateTexture?{'fbx-atlas.png':fbxPng}:{}),
     'README.txt':strToU8(bundleGuide),
     ...Object.fromEntries(Object.entries(robloxImportFiles).map(([name,text])=>[name,strToU8(text)])),
     ...Object.fromEntries((state.paintLayer?.frames||[]).flatMap((f,i)=>f.png?[[`paint-layer/frame-${i}.png`,Uint8Array.from(atob(f.png.split(',')[1]),c=>c.charCodeAt(0))]]:[]))
   },{level:6});
 }
-export async function downloadBundle(state,atlas,meshes,settings={}){triggerDownload(await bundleBytes(state,atlas,meshes,settings),exportFilename(state)+'.zip','application/zip');}
+export async function downloadBundle(state,atlas,meshes,settings={},fbxAtlas=atlas){triggerDownload(await bundleBytes(state,atlas,meshes,settings,fbxAtlas),exportFilename(state)+'.zip','application/zip');}
 export async function readProject(file){const data=await projectFileData(file),s=data.state;const fail=()=>{throw Error('Invalid Cube Studio project');};if(data.format!=='cube-studio'||![1,2,3].includes(data.version)||!s||!Array.isArray(s.boxes)||s.boxes.length<1||s.boxes.length>128)fail();
 const validArray=(a,length)=>Array.isArray(a)&&a.length===length&&a.every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<10000);const validQ=q=>validArray(q,4)&&Math.abs(Math.hypot(...q)-1)<.01;const ids=new Set(),slots=new Set();for(let i=0;i<s.boxes.length;i++){const b=s.boxes[i];if(!Number.isInteger(b.id)||b.id<0||ids.has(b.id)||!Number.isInteger(b.slot)||b.slot<0||b.slot>=128||slots.has(b.slot)||!validArray(b.p,3)||!validQ(b.q)||typeof b.anchor!=='boolean'||!/^#[0-9a-f]{6}$/i.test(b.color))fail();if(i===0){if(b.id!==0||b.parent!==null)fail();}else if(!ids.has(b.parent)||!validArray(b.a,3)||!validArray(b.b,3))fail();ids.add(b.id);slots.add(b.slot);if(b.size!==undefined&&(!validArray(b.size,3)||b.size.some(v=>v<.2||v>12)))fail();if(b.axis!==undefined&&!['omni','x','y','z'].includes(b.axis))fail();if(b.normal!==undefined&&(!validArray(b.normal,3)||b.normal.filter(v=>Math.abs(v)===1).length!==1||b.normal.filter(v=>v===0).length!==2))fail();}
 if(s.name!==undefined&&(typeof s.name!=='string'||s.name.length>80))fail();

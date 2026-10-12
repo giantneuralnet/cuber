@@ -1,5 +1,4 @@
 import * as T from './vendor/three.module.js';
-import {assetDescription,exportFilename,triggerDownload} from './export.js?v=7';
 
 // FBX 7.4 binary. Arrays are uncompressed so the writer needs no runtime dependencies.
 const enc=new TextEncoder(), I=v=>({type:'I',value:v}), L=v=>({type:'L',value:v}), D=v=>({type:'D',value:v});
@@ -105,10 +104,4 @@ export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30}={}){
   N('References'),N('Definitions',[],[N('Version',[I(100)]),N('Count',[I(objects.length)]),...[...counts].map(([name,count])=>N('ObjectType',[name],[N('Count',[I(count)])]))]),
   N('Objects',[],objects),N('Connections',[],connections),N('Takes',[],[N('Current',[''])])
  ]);
-}
-export async function downloadFBX(state,canvas,meshes){
- const snapshot=structuredClone(state),asset=assetDescription(snapshot,meshes,canvas.width);
- const png=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?b.arrayBuffer().then(resolve,reject):reject(Error('Texture export failed')),'image/png'));
- const name=exportFilename(snapshot);
- triggerDownload(fbxBytes(asset,new Uint8Array(png),{textureFilename:`${name}-atlas.png`}),`${name}.fbx`,'application/octet-stream');
 }
