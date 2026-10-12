@@ -108,3 +108,18 @@ Imported rigs retain their inset or external joint pivots during movement and re
 ## Bundled Roblox import toolkit
 
 Edit the canonical files in `dist/roblox/`, then run `node scripts/embed-roblox-import.mjs` to refresh `dist/roblox-import-files.js`. The generated module embeds the guide and scripts so every ZIP download works without extra network requests. `tests/roblox-import.test.mjs` verifies source synchronization and exercises the Python preparer on a real exported fixture, including face mapping, thin crops, overlay index zero, and empty/duplicate animation rows. The Lua importer/player still require integration checks in the target Roblox Studio experience.
+
+## FBX export
+
+Export > Download FBX writes a binary FBX 7.4 file with one rigidly skinned mesh and bone per cube, original atlas UVs, and an embedded PNG of the current composited paint frame. Animation rows become separate clips, sampled at 30 fps (including exact authored keyframe times). The skeleton keeps the authored pivot hierarchy. Geometry is Y-up, forward -Z, using the same coordinate conversion as the existing ZIP, with a 28 cm unit declaration per Cuber stud.
+
+FBX is a mesh interchange option. The editable ZIP remains the source project and native Roblox Part importer workflow. FBX does not preserve editable paint layers, animated texture-frame switching, authoring constraints, or Roblox Motor6D objects. Configure nearest/point texture filtering in the destination application. No texture/animation uploads occur during export.
+
+The binary writer is `dist/fbx-export.js`. For independent interoperability checks, download `ufbx.c` and `ufbx.h` from https://github.com/ufbx/ufbx into a temporary directory and compile:
+
+```sh
+cc -O2 -I/path/to/ufbx tests/fbx-inspect.c /path/to/ufbx/ufbx.c -lm -o /tmp/cuber-fbx-inspect
+FBX_INSPECTOR=/tmp/cuber-fbx-inspect node tests/fbx-export.test.mjs
+```
+
+The independent reader checks the embedded PNG, exact UVs, mesh/bone count, bind pose, mixed-axis rotations, pivot preservation, separate clips, and animation across 180 degrees. Browser QA also verifies named FBX and ZIP downloads at 390×844. Roblox Studio's FBX importer has not been exercised here.
