@@ -17,7 +17,7 @@ try{
  for(let f=0;f<6;f++){const r=state.atlasLayout.faces[f];for(let v=0;v<4;v++){const i=f*4+v;uv.setXY(i,(r.x+.0001+uv.getX(i)*(r.spanW-.0002))/256,1-(r.y+.0001+(1-uv.getY(i))*(r.spanH-.0002))/256);}}
  const files=unzipSync(await bundleBytes(state,{width:256,toBlob:cb=>cb(new Blob([png]))},new Map([[0,{geometry}]])));
  for(const [name,text] of Object.entries(robloxImportFiles)){
-  assert.equal(strFromU8(files[name]),text);
+  assert.equal(files[name],undefined,'legacy native-Part importer is no longer bundled');
   const source=name==='ROBLOX-IMPORT.md'?'IMPORT.md':name.split('/').at(-1);
   assert.equal(text,readFileSync(new URL('../dist/roblox/'+source,import.meta.url),'utf8'),'regenerate the embedded importer after source changes');
   assert.ok(!/89152742665505|94621651488630|MedievalVillage|VillageChickens|CloveChickenAI/.test(text));

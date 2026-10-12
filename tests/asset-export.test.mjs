@@ -47,7 +47,7 @@ assert.equal(data.texture.filter,'nearest');
 data.parts[0].size[0]=99;assert.equal(boxes[0].size[0],1,'description does not mutate project');
 const blob=new Blob(['test texture']);
 const bytes=await bundleBytes(state,{width:256,toBlob:cb=>cb(blob),toDataURL:()=> 'data:image/png;base64,dGVzdA=='},meshes),files=unzipSync(bytes);
-assert.deepEqual(Object.keys(files).sort(),['README.txt','ROBLOX-IMPORT.md','asset.json','atlas.png','model.fbx','roblox/CuberAnimationPlayer.client.lua','roblox/CuberImporter.lua','roblox/prepare_cuber.py']);
+assert.deepEqual(Object.keys(files).sort(),['README.txt','asset.json','atlas.png','cube-asset.fbx']);
 assert.equal(JSON.parse(strFromU8(files['asset.json'])).format,'cube-studio-asset');
 assert.equal(JSON.parse(strFromU8(files['asset.json'])).version,2);
 assert.equal(files['model.cube'],undefined,'no duplicate editable model');
@@ -72,7 +72,30 @@ const preview=new Blob(['composited paint frame']);
 const combined=unzipSync(await bundleBytes(state,{width:256,toBlob:cb=>cb(blob)},meshes,{}, {width:256,toBlob:cb=>cb(preview)}));
 assert.equal(strFromU8(combined['atlas.png']),'test texture');
 assert.equal(strFromU8(combined['fbx-atlas.png']),'composited paint frame');
-assert.equal(strFromU8(combined['model.fbx'].slice(0,20)),'Kaydara FBX Binary  ');
-assert.ok(strFromU8(combined['model.fbx']).includes('fbx-atlas.png'));
+assert.equal(strFromU8(combined['cube-asset.fbx'].slice(0,20)),'Kaydara FBX Binary  ');
+assert.ok(strFromU8(combined['cube-asset.fbx']).includes('fbx-atlas.png'));
 assert.equal(files['fbx-atlas.png'],undefined,'no extra PNG when FBX uses the base atlas');
 console.log('PASS unified ZIP includes FBX; composited preview stays separate from editable base texture.');
+
+// The simplified Roblox bundle keeps all clips together and exports marker data,
+// without shipping a native-Part importer or custom animation runtime.
+const {fbxFilename,textureEventData}=await import('../dist/export.js');
+assert.equal(fbxFilename({name:'  Wooden Duck  '}),'Wooden_Duck.fbx');
+assert.equal(fbxFilename({name:'Duck/Walk: test'}),'Duck-Walk-_test.fbx');
+const multi=structuredClone(state);multi.name='Wooden Duck';
+const later=structuredClone(rest);later[0].p=[4,3,2];
+const moved=projectPose(multi.boxes,later);
+multi.animations=[{id:20,name:'Idle',frames:[{time:0,pose:rest,paintFrame:1}]},{id:30,name:'Walk',frames:[{time:0,pose:rest,paintFrame:0},{time:.5,pose:moved,paintFrame:0},{time:1,pose:rest,paintFrame:1},{time:2,pose:moved,paintFrame:0}]},{id:40,name:'Empty',frames:[]}];
+const actualPng=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64');
+multi.paintLayer={frame:0,frames:[{png:'data:image/png;base64,'+actualPng.toString('base64')},{png:''}]};
+const simplified=unzipSync(await bundleBytes(multi,{width:256,toBlob:cb=>cb(new Blob([actualPng]))},meshes));
+assert.deepEqual(Object.keys(simplified).filter(n=>n.endsWith('.fbx')),['Wooden_Duck.fbx']);
+assert.ok(Object.keys(simplified).every(n=>!n.startsWith('roblox/')&&!n.endsWith('.lua')&&!n.endsWith('.py')));
+const readme=strFromU8(simplified['README.txt']);assert.ok(readme.includes('Wooden_Duck.fbx'));assert.ok(readme.includes('Animator:LoadAnimation()'));assert.ok(!readme.includes('USE PARTS'));assert.ok(readme.length<2100);
+const events=JSON.parse(strFromU8(simplified['texture-events.json']));assert.equal(events.marker,'CuberTexture');
+assert.deepEqual(events.frames,[{value:'0',overlay:'paint-layer/frame-0.png'},{value:'1',overlay:null}]);
+assert.deepEqual(events.animations,[{id:20,name:'Idle',initialValue:'1',events:[{time:0,value:'1'}]},{id:30,name:'Walk',initialValue:'0',events:[{time:0,value:'0'},{time:1,value:'1'},{time:2,value:'0'}]}]);
+assert.deepEqual(JSON.parse(strFromU8(simplified['asset.json'])).animations.map(a=>a.id),[20,30,40]);
+assert.equal(textureEventData({paintLayer:{frames:[{file:null}]}}),null);
+if(process.env.FBX_INSPECTOR){const {mkdtempSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{execFileSync}=await import('node:child_process');const dir=mkdtempSync(tmpdir()+'/cuber-bundle-'),file=dir+'/Wooden_Duck.fbx';writeFileSync(file,simplified['Wooden_Duck.fbx']);const imported=JSON.parse(execFileSync(process.env.FBX_INSPECTOR,[file],{maxBuffer:20*1024*1024}));assert.deepEqual(imported.animations.map(a=>a.name),['Idle','Walk']);assert.equal(imported.meshes.length,1);assert.equal(imported.bones,1);}
+console.log('PASS named single FBX with all clips, concise README, no legacy runtime, and exact texture marker labels/times.');

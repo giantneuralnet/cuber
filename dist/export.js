@@ -1,5 +1,4 @@
 import {fbxBytes} from './fbx-export.js?v=8';
-import {robloxImportFiles} from './roblox-import-files.js?v=2';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
 import {validateLayout,legacyLayout} from './atlas-layout.js';
@@ -56,35 +55,28 @@ export function assetDescription(state,meshes,textureSize=state.textureSize,sett
 export function triggerDownload(data,filename,type){const blob=new Blob([data],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);}
 export function projectData(state,atlas){return {format:'cube-studio',version:3,state:structuredClone(state),atlas:atlas.toDataURL('image/png')};}
 export const exportFilename=state=>(state.name?.trim()||'cube-asset').replace(/[<>:\"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/g,'').slice(0,80)||'cube-asset';
-const bundleGuide=`CUBER PROJECT / ASSET ZIP v2
+export const fbxFilename=state=>exportFilename(state).replace(/\s+/g,'_')+'.fbx';
+export function textureEventData(description){
+ if(!description.paintLayer?.frames.some(f=>f.file))return null;
+ return {version:1,marker:'CuberTexture',timeUnit:'seconds',baseTexture:'atlas.png',blend:'source-over',frames:description.paintLayer.frames.map((f,i)=>({value:String(i),overlay:f.file})),animations:description.animations.filter(a=>a.keyframes.length).map(a=>{
+  let previous;const events=[];
+  for(const f of a.keyframes){const value=String(f.paintFrame??0);if(value!==previous)events.push({time:f.time,value});previous=value;}
+  return {id:a.id,name:a.name,initialValue:events[0].value,events};
+ })};
+}
+function bundleGuide(main,texture,hasPaint){return `CUBER
 
-model.fbx is a mesh interchange copy with an embedded current-frame PNG. Fuse static joints is enabled by default: parts with identical relative poses throughout the bind pose and every animation are merged, while moving joints and their descendants retain their motion. A fully static asset becomes one textured mesh without bones. Disable fusion in Cuber's File tab to export the original rig. If the current texture layer changes the preview, fbx-atlas.png is its flattened texture; atlas.png remains the editable base. Fusion affects only the FBX; asset.json preserves every editable cube and Motor6D for the native Roblox Part importer. For native Roblox Parts, use the bundled importer and ignore the FBX.
+Import ${main} into Roblox Studio as a mesh model. It contains the rig, animation clips and shared texture. ${texture} is included as a texture fallback. Keep the exported orientation and scale.
 
-asset.json describes the complete rig and every animation. atlas.png is its one shared texture. Open this same ZIP in Cuber to resume editing. The editor field holds atlas placement and workspace settings; parts, joints and animations are stored only once. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
+Publish the imported clips as Roblox Animation assets and play them with Animator:LoadAnimation() and AnimationTrack. No custom animation player is needed. Fuse static joints merges rigid sections across every clip; fully static models have no bones or motion tracks.
 
-ROBLOX IMPORT: USE PARTS, NOT MESHES
-Start with ROBLOX-IMPORT.md and the scripts in roblox/. The bundled preparer and native-Part importer read this asset directly. They include no game-specific behavior or image IDs.
-Create one native Roblox Part with Shape = Enum.PartType.Block for each entry in parts. Set its Size from size and its CFrame from restTransform, and connect the Parts using the supplied Motor6D joints. Do not create MeshParts or SpecialMeshes, combine the boxes into a mesh, or use FBX/OBJ mesh import. The mesh field is reference geometry and face texture-coordinate data only; it is not an instruction to create a Roblox mesh.
-
-COORDINATES
-All asset.json geometry and transforms are already in right-handed Roblox coordinates: +Y up, -Z forward, studs. The author's +Z front is converted with a proper 180-degree Y rotation. Do not convert again. Cuber converts these back when opening the ZIP. The editor atlas layout and surface normals use editor coordinates.
-A transform is {position:[x,y,z],rotation:[x,y,z,w]}; rotation is a normalized quaternion, not Euler angles. Part restTransform and rigRoot.restTransform are world transforms. Compose translation * quaternion rotation, with unit scale.
-
-PARTS AND TEXTURE
-Each part has a stable numeric id, box dimensions, rest pose, and reference geometry. Use size for the Roblox Part dimensions. All parts share atlas.png. Use the reference normals and UVs to locate and orient each face's painted region, then display the artwork on the native Part faces using a Part-compatible face-image approach. Native Parts do not accept arbitrary mesh UVs; do not switch to MeshParts to apply the atlas. Preserve pixel art with nearest-neighbor filtering where supported. baseColor is the original authoring swatch, not an additional tint to multiply over the already painted atlas.
-Reference positions already include the part's size; do not multiply them by size again. indices are zero-based counterclockwise triangle vertex indices. positions, normals, and uvs have matching indices. UVs use a bottom-left origin, while the PNG has its usual top-left image origin.
-
-JOINTS
-Create rigRoot as an invisible anchored Roblox Part, then all block Parts and Motor6Ds. parentPartId:null refers to rigRoot. Other parentPartId and childPartId values refer to part ids. c0 and c1 are the two part-local bind frames. The equation is:
-childWorld = parentWorld * c0 * jointTransform * inverse(c1)
-At rest, jointTransform is identity. Joint ids match their child part ids. Constraint axes and signed axisVector values are parent-part-local authoring metadata, not physical Motor6D limits. Animated poses already include these constraints. editorAnchor is an authoring pin; animated parts remain unanchored and non-colliding.
-
-PAINT LAYER
-The optional paintLayer is one transparent animated overlay above atlas.png. Each PNG uses the exact same dimensions and UV layout as the base. Null file means a fully transparent frame. Use source-over alpha composition, nearest filtering, and select the zero-based paintFrame referenced by each animation keyframe. Hold that texture until the next pose keyframe; there is no separate texture clock. Keep overlays separate when importing to Roblox; do not replace or tint the base atlas.
-
-ANIMATIONS
-Every animation row is separate. Empty keyframes means an unanimated row; use the rig rest pose. The editor settings are optional for Roblox import. Keyframe time is in seconds. jointTransforms maps each joint id to its local animation transform, including the joint from rigRoot to the first cube. Build nested poses using joint hierarchy and part names. Slerp rotations and linearly interpolate translations between keyframes. These poses belong to this exact rig; another rig needs retargeting. Creating the Roblox Part rig and uploading texture and animation assets is a later import step; no mesh assets are needed.
-`;
+Open this ZIP in Cuber to resume editing. asset.json, atlas.png and any paint-layer PNGs preserve the original editable cubes.
+${hasPaint?`
+TEXTURE EVENTS
+texture-events.json lists CuberTexture marker times and string values for each animation. Values are zero-based paint frame numbers; a null overlay means the base texture alone. These are import instructions, not markers automatically embedded into Roblox by FBX.
+Before publishing each animation, add matching Roblox KeyframeMarkers (Name = CuberTexture, Value = the listed value) at the listed times. Keep motion playback in Animator. Your script listens with AnimationTrack:GetMarkerReachedSignal("CuberTexture") and switches to the matching texture. Initialize initialValue on playback start and loop restart.
+With the standard MeshPart texture, composite each used overlay over atlas.png and upload each resulting atlas once, then swap TextureID (or SurfaceAppearance ColorMap). If your renderer already supports a separate overlay, switch that overlay image instead. Texture-only static models have no FBX motion track to attach markers to.
+`:''}`;}
 export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas){
   state=structuredClone(state);settings=structuredClone(settings);
   const description=assetDescription(state,meshes,atlas.width,settings);
@@ -93,13 +85,14 @@ export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas)
   const png=new Uint8Array(base),fbxPng=preview?new Uint8Array(preview):png;
   const separateTexture=png.length!==fbxPng.length||png.some((v,i)=>v!==fbxPng[i]);
   const textureFilename=separateTexture?'fbx-atlas.png':'atlas.png';
+  const main=fbxFilename(state),events=textureEventData(description);
   return zipSync({
     'asset.json':strToU8(JSON.stringify(description,null,2)),
     'atlas.png':png,
-    'model.fbx':fbxBytes(description,fbxPng,{textureFilename,fuseStaticJoints:settings.fuseStaticJoints!==false}),
+    [main]:fbxBytes(description,fbxPng,{textureFilename,fuseStaticJoints:settings.fuseStaticJoints!==false}),
     ...(separateTexture?{'fbx-atlas.png':fbxPng}:{}),
-    'README.txt':strToU8(bundleGuide),
-    ...Object.fromEntries(Object.entries(robloxImportFiles).map(([name,text])=>[name,strToU8(text)])),
+    'README.txt':strToU8(bundleGuide(main,textureFilename,!!events)),
+    ...(events?{'texture-events.json':strToU8(JSON.stringify(events,null,2))}:{}),
     ...Object.fromEntries((state.paintLayer?.frames||[]).flatMap((f,i)=>f.png?[[`paint-layer/frame-${i}.png`,Uint8Array.from(atob(f.png.split(',')[1]),c=>c.charCodeAt(0))]]:[]))
   },{level:6});
 }
