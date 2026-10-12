@@ -7,6 +7,7 @@ import * as T from '../dist/vendor/three.module.js';
 import {assetDescription} from '../dist/export.js';
 import {fbxBytes} from '../dist/fbx-export.js';
 import {projectPose} from '../dist/model-ops.js';
+import {checkBlenderMetadata} from './fbx-metadata.mjs';
 const inspector=process.env.FBX_INSPECTOR;
 const matrix=t=>new T.Matrix4().compose(new T.Vector3(...t.position),new T.Quaternion(...t.rotation),new T.Vector3(1,1,1));
 const expectedVertices=(asset,poses)=>asset.parts.map(p=>({name:`${p.name}_${p.id}`,positions:p.mesh.indices.flatMap(i=>new T.Vector3(...p.mesh.positions[i]).applyMatrix4(poses?.get(p.id)??matrix(p.restTransform)).toArray()),uvs:p.mesh.indices.flatMap(i=>p.mesh.uvs[i])}));
@@ -20,6 +21,7 @@ const meshes=new Map(boxes.map(b=>[b.id,{geometry:new T.BoxGeometry()}]));
 const asset=assetDescription({name:'FBX rig',boxes,animations},meshes,256),bytes=fbxBytes(asset,png);
 assert.equal(new TextDecoder().decode(bytes.slice(0,21)),'Kaydara FBX Binary  \0');assert.equal(new DataView(bytes.buffer).getUint32(23,true),7400);
 assert.ok(bytes.length>png.length);assert.deepEqual(bytes,fbxBytes(asset,png),'deterministic bytes');
+checkBlenderMetadata(fbxBytes({...asset,animations:[...asset.animations,{...asset.animations[1],name:'Still'}]},png));
 if(!inspector){console.log('PASS FBX binary header and deterministic export. Set FBX_INSPECTOR for independent rig/UV/animation checks.');process.exit(0);}
 const path=join(mkdtempSync(join(tmpdir(),'cuber-fbx-')),'rig.fbx');writeFileSync(path,bytes);
 for(const t of [0,.5,1]){

@@ -3,7 +3,10 @@ import * as T from './vendor/three.module.js';
 // FBX 7.4 binary. Arrays are uncompressed so the writer needs no runtime dependencies.
 const enc=new TextEncoder(), I=v=>({type:'I',value:v}), L=v=>({type:'L',value:v}), D=v=>({type:'D',value:v});
 const A=(type,value)=>({type,value}), N=(name,props=[],children=[])=>({name,props,children});
-const P=(name,type,values,flags='')=>N('P',[name,type,'',flags,...values]);
+// FBX property subtypes are significant: Blender validates them on import.
+const subtypes={int:'Integer',double:'Number',KTime:'Time'};
+const P=(name,type,values,flags='')=>N('P',[name,type,subtypes[type]??'',flags,...values]);
+const classes={AnimationStack:'AnimStack',AnimationLayer:'AnimLayer',AnimationCurveNode:'AnimCurveNode',AnimationCurve:'AnimCurve'};
 const props=children=>N('Properties70',[],children), named=(name,kind)=>`${name}\0\x01${kind}`;
 const time=t=>Math.round(t*46186158000), matrix=t=>new T.Matrix4().compose(new T.Vector3(...t.position),new T.Quaternion(...t.rotation),new T.Vector3(1,1,1));
 const vec=v=>v.map(D), idName=p=>`${p.name}_${p.id}`;
@@ -42,7 +45,7 @@ export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30}={}){
  if(!asset.parts?.length||!png?.length)throw Error('A model and PNG texture are required');
  if(!Number.isFinite(fps)||fps<1||fps>120)throw Error('Invalid FBX sample rate');
  const objects=[],connections=[],bindNodes=[],identity=new T.Matrix4(),ids=new Map();let serial=1000;
- const alloc=()=>serial++,add=(kind,id,name,type,children)=>objects.push(N(kind,[L(id),named(name,kind==='Model'?'Model':kind),type],children));
+ const alloc=()=>serial++,add=(kind,id,name,type,children)=>objects.push(N(kind,[L(id),named(name,classes[kind]??kind),type],children));
  const link=(child,parent,property)=>connections.push(N('C',[property?'OP':'OO',L(child),L(parent),...(property?[property]:[])]));
  const rig=alloc(),mat=alloc(),tex=alloc(),video=alloc(),joints=new Map(asset.joints.map(j=>[j.childPartId,j]));
  add('Model',rig,asset.name||'Cuber','Null',[N('Version',[I(232)]),transformProps(identity)]);link(rig,0);
