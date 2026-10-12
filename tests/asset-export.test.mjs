@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
 import * as T from '../dist/vendor/three.module.js';
+import {encodeTexturePNG} from '../dist/texture-upscale.js';
 import {assetDescription,bundleBytes} from '../dist/export.js';
 import {projectPose} from '../dist/model-ops.js';
 import {unzipSync,strFromU8} from '../dist/vendor/fflate.js';
@@ -45,13 +46,13 @@ assert.deepEqual(mesh.uvs,Array.from({length:uv.count},(_,i)=>[uv.getX(i),uv.get
 assert.equal(data.coordinates.conversionApplied,true);
 assert.equal(data.texture.filter,'nearest');
 data.parts[0].size[0]=99;assert.equal(boxes[0].size[0],1,'description does not mutate project');
-const blob=new Blob(['test texture']);
+const testPng=encodeTexturePNG({width:256,height:256,pixels:new Uint8Array(256*256*4).fill(127)}),blob=new Blob([testPng]);
 const bytes=await bundleBytes(state,{width:256,toBlob:cb=>cb(blob),toDataURL:()=> 'data:image/png;base64,dGVzdA=='},meshes),files=unzipSync(bytes);
-assert.deepEqual(Object.keys(files).sort(),['README.txt','asset.json','atlas.png','cube-asset.fbx']);
+assert.deepEqual(Object.keys(files).sort(),['README.txt','asset.json','atlas.png','cube-asset.fbx','textures/1024/atlas.png','textures/512/atlas.png']);
 assert.equal(JSON.parse(strFromU8(files['asset.json'])).format,'cube-studio-asset');
 assert.equal(JSON.parse(strFromU8(files['asset.json'])).version,2);
 assert.equal(files['model.cube'],undefined,'no duplicate editable model');
-assert.equal(strFromU8(files['atlas.png']),'test texture');
+assert.deepEqual(files['atlas.png'],testPng);
 console.log('PASS: data bundle schema, XYZ hinges, connected pivots, rotated rest pose, front orientation, winding, UVs, animation rows, editable metadata, and texture bytes.');
 // Optional real-project export also exercises the exact browser bundle builder.
 if(process.argv[2]){
@@ -68,10 +69,11 @@ assert.equal(exportFilename({name:'  Walk Cycle  '}),'Walk Cycle');
 assert.equal(exportFilename({name:'Legs/front:*?'}),'Legs-front---');
 assert.equal(exportFilename({name:'...'}),'cube-asset');
 console.log('PASS: named exports and safe filename fallback.');
-const preview=new Blob(['composited paint frame']);
+const previewPng=encodeTexturePNG({width:256,height:256,pixels:new Uint8Array(256*256*4).fill(255)}),preview=new Blob([previewPng]);
 const combined=unzipSync(await bundleBytes(state,{width:256,toBlob:cb=>cb(blob)},meshes,{}, {width:256,toBlob:cb=>cb(preview)}));
-assert.equal(strFromU8(combined['atlas.png']),'test texture');
-assert.equal(strFromU8(combined['fbx-atlas.png']),'composited paint frame');
+assert.deepEqual(combined['atlas.png'],testPng);
+assert.deepEqual(combined['fbx-atlas.png'],previewPng);
+assert.ok(combined['textures/1024/fbx-atlas.png']);
 assert.equal(strFromU8(combined['cube-asset.fbx'].slice(0,20)),'Kaydara FBX Binary  ');
 assert.ok(strFromU8(combined['cube-asset.fbx']).includes('fbx-atlas.png'));
 assert.equal(files['fbx-atlas.png'],undefined,'no extra PNG when FBX uses the base atlas');
@@ -91,7 +93,8 @@ multi.paintLayer={frame:0,frames:[{png:'data:image/png;base64,'+actualPng.toStri
 const simplified=unzipSync(await bundleBytes(multi,{width:256,toBlob:cb=>cb(new Blob([actualPng]))},meshes));
 assert.deepEqual(Object.keys(simplified).filter(n=>n.endsWith('.fbx')),['Wooden_Duck.fbx']);
 assert.ok(Object.keys(simplified).every(n=>!n.startsWith('roblox/')&&!n.endsWith('.lua')&&!n.endsWith('.py')));
-const readme=strFromU8(simplified['README.txt']);assert.ok(readme.includes('Wooden_Duck.fbx'));assert.ok(readme.includes('Animator:LoadAnimation()'));assert.ok(!readme.includes('USE PARTS'));assert.ok(readme.length<2100);
+const readme=strFromU8(simplified['README.txt']);assert.ok(readme.includes('Wooden_Duck.fbx'));assert.ok(readme.includes('Animator:LoadAnimation()'));assert.ok(!readme.includes('USE PARTS'));assert.ok(readme.length<2400);
+assert.ok(simplified['textures/512/paint-layer/frame-0.png']);assert.equal(simplified['textures/512/paint-layer/frame-1.png'],undefined);
 const events=JSON.parse(strFromU8(simplified['texture-events.json']));assert.equal(events.marker,'CuberTexture');
 assert.deepEqual(events.frames,[{value:'0',overlay:'paint-layer/frame-0.png'},{value:'1',overlay:null}]);
 assert.deepEqual(events.animations,[{id:20,name:'Idle',initialValue:'1',events:[{time:0,value:'1'}]},{id:30,name:'Walk',initialValue:'0',events:[{time:0,value:'0'},{time:1,value:'1'},{time:2,value:'0'}]}]);

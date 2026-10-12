@@ -68,7 +68,8 @@ export async function projectFileData(file){
   let total=0,count=0;const names=new Set();
   const files=unzipSync(bytes,{filter:entry=>{
     total+=entry.originalSize;
-    if(++count>100||total>64*1024*1024)throw Error('Project ZIP is too large');
+    // 16 overlay frames plus base/preview at six sizes can exceed 100 entries.
+    if(++count>160||total>64*1024*1024)throw Error('Project ZIP is too large');
     if(!['asset.json','atlas.png','model.cube'].includes(entry.name)&&!/^paint-layer\/frame-\d+\.png$/.test(entry.name))return false;
     if(names.has(entry.name))fail();names.add(entry.name);return true;
   }});

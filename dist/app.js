@@ -12,7 +12,7 @@ import {LocalProjectAutosave} from './local-project.js';
 import {createTextureView} from './texture-view.js?v=3';
 import {bindPointerInput} from './pointer-input.js';
 import {allFrames,activeFrames,animationMirrorPairs,mirrorAnimationPose,TEXTURE_SIZES,GRID_SIZES,steppedValue,slidePosition,editMirroredJoint,dimensions,axisVector,normalizeModel,normalFor,constrainedRelative,projectPose,editShape,mirroredSamples,pastePose,mirrorPartners,editMirroredShape} from './model-ops.js';
-import {downloadBundle,readProject,projectData,triggerDownload} from './export.js?v=14';
+import {downloadBundle,readProject,projectData,triggerDownload} from './export.js?v=15';
 const $=s=>document.querySelector(s), clamp=THREE.MathUtils.clamp;
 const MAX=128;let SIZE=1024,activeLayout=null;
 let palette=['#f4f7fc','#263342','#3264ee','#e75946','#ffbb4a','#83bf81','#b8a2e6'];

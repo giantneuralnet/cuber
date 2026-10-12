@@ -2,8 +2,9 @@ import {fbxBytes} from './fbx-export.js?v=8';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
 import {validateLayout,legacyLayout} from './atlas-layout.js';
-import {projectFileData} from './asset-project.js?v=2';
+import {projectFileData} from './asset-project.js?v=3';
 import {validatePaintLayer} from './paint-layer.js';
+import {textureUpscales} from './texture-upscale.js';
 import {zipSync,strToU8} from './vendor/fflate.js';
 
 const matrix=p=>new THREE.Matrix4().compose(new THREE.Vector3(...p.p),new THREE.Quaternion(...p.q),new THREE.Vector3(1,1,1));
@@ -64,9 +65,10 @@ export function textureEventData(description){
   return {id:a.id,name:a.name,initialValue:events[0].value,events};
  })};
 }
-function bundleGuide(main,texture,hasPaint){return `CUBER
+function bundleGuide(main,texture,hasPaint,hasUpscales){return `CUBER
 
 Import ${main} into Roblox Studio as a mesh model. It contains the rig, animation clips and shared texture. ${texture} is included as a texture fallback. Keep the exported orientation and scale.
+${hasUpscales?'\ntextures/<size>/ contains nearest-neighbor PNG upscales through 1024px, including overlays. To use a larger texture, upload the matching PNG from that folder; UVs stay unchanged. Originals remain at the ZIP root for editing.\n':''}
 
 Publish the imported clips as Roblox Animation assets and play them with Animator:LoadAnimation() and AnimationTrack. No custom animation player is needed. Fuse static joints merges rigid sections across every clip; fully static models have no bones or motion tracks.
 
@@ -86,14 +88,18 @@ export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas)
   const separateTexture=png.length!==fbxPng.length||png.some((v,i)=>v!==fbxPng[i]);
   const textureFilename=separateTexture?'fbx-atlas.png':'atlas.png';
   const main=fbxFilename(state),events=textureEventData(description);
+  const textures={
+    'atlas.png':png,
+    ...(separateTexture?{'fbx-atlas.png':fbxPng}:{}),
+    ...Object.fromEntries((state.paintLayer?.frames||[]).flatMap((f,i)=>f.png?[[`paint-layer/frame-${i}.png`,Uint8Array.from(atob(f.png.split(',')[1]),c=>c.charCodeAt(0))]]:[]))
+  };
+  const upscales=textureUpscales(textures,atlas.width);
   return zipSync({
     'asset.json':strToU8(JSON.stringify(description,null,2)),
-    'atlas.png':png,
+    ...textures,...upscales,
     [main]:fbxBytes(description,fbxPng,{textureFilename,fuseStaticJoints:settings.fuseStaticJoints!==false}),
-    ...(separateTexture?{'fbx-atlas.png':fbxPng}:{}),
-    'README.txt':strToU8(bundleGuide(main,textureFilename,!!events)),
-    ...(events?{'texture-events.json':strToU8(JSON.stringify(events,null,2))}:{}),
-    ...Object.fromEntries((state.paintLayer?.frames||[]).flatMap((f,i)=>f.png?[[`paint-layer/frame-${i}.png`,Uint8Array.from(atob(f.png.split(',')[1]),c=>c.charCodeAt(0))]]:[]))
+    'README.txt':strToU8(bundleGuide(main,textureFilename,!!events,Object.keys(upscales).length>0)),
+    ...(events?{'texture-events.json':strToU8(JSON.stringify(events,null,2))}:{})
   },{level:6});
 }
 export async function downloadBundle(state,atlas,meshes,settings={},fbxAtlas=atlas){triggerDownload(await bundleBytes(state,atlas,meshes,settings,fbxAtlas),exportFilename(state)+'.zip','application/zip');}

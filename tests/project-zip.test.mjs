@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import * as T from '../dist/vendor/three.module.js';
+import {encodeTexturePNG} from '../dist/texture-upscale.js';
 import {bundleBytes,readProject,projectData} from '../dist/export.js';
 import {stateFromAsset} from '../dist/asset-project.js';
 import {packAtlas} from '../dist/atlas-layout.js';
@@ -40,10 +41,10 @@ const rest=Object.fromEntries(boxes.map(b=>[b.id,{p:b.p,q:b.q}])),moved=structur
 moved[0].p=[3,4,-2];moved[2].q=new T.Quaternion().setFromEuler(new T.Euler(.6,.4,.1)).toArray();
 const state={name:'Round trip',boxes,nextId:12,textureSize:256,gridSize:.05,atlasLayout:packAtlas(boxes,256),animations:[{id:2,name:'Motion',frames:[{time:0,pose:rest},{time:.5,pose:projectPose(boxes,moved)}]},{id:7,name:'Empty',frames:[]}],nextAnimationId:12,animation:0,frame:1};
 const settings={mode:'paint',tool:'fill',color:'#123456',palette:['#123456','#ffffff','#000000','#aaaaaa','#bbbbbb','#cccccc','#dddddd'],brush:13,mirrors:{x:true,y:false,z:true},textureView:true,exploded:true,showJoints:false};
-const png=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(png);png.writeUInt32BE(256,16);png.writeUInt32BE(256,20);
+const png=Buffer.from(encodeTexturePNG({width:256,height:256,pixels:new Uint8Array(256*256*4)}));
 const atlas={width:256,toBlob:cb=>cb(new Blob([png])),toDataURL:()=>`data:image/png;base64,${png.toString('base64')}`};
 const meshes=meshMap(state),bytes=await bundleBytes(state,atlas,meshes,settings),files=unzipSync(bytes),loaded=await readProject(new Blob([bytes]));
-assert.deepEqual(Object.keys(files).sort(),['README.txt','Round_trip.fbx','asset.json','atlas.png']);
+assert.deepEqual(Object.keys(files).sort(),['README.txt','Round_trip.fbx','asset.json','atlas.png','textures/1024/atlas.png','textures/512/atlas.png']);
 sameState(state,loaded.state);assert.deepEqual(loaded.editor,settings);assert.deepEqual(Buffer.from(files['atlas.png']),png);
 const savedAgain=await readProject(new Blob([await bundleBytes(loaded.state,atlas,meshMap(loaded.state),loaded.editor)]));sameState(state,savedAgain.state);
 const legacy=projectData(state,atlas);sameState(state,(await readProject(new Blob([JSON.stringify(legacy)]))).state);
@@ -83,3 +84,12 @@ for(const filename of process.argv.slice(2)){
  console.log(`PASS: real asset round trip: ${s.name}, ${s.boxes.length} parts, ${s.animations.length} animation rows.`);
 }
 console.log('PASS: repeated ZIP round trips, rotated XYZ hinges, sparse atlas slots, exact texture, editor settings, empty rows, legacy files/bundles, and malformed/oversized ZIP rejection.');
+
+// The smallest atlas plus all sixteen frames produces over 100 ZIP entries.
+const small=structuredClone(state);small.textureSize=32;small.atlasLayout=packAtlas(small.boxes,32);
+const smallPNG=encodeTexturePNG({width:32,height:32,pixels:new Uint8Array(32*32*4).fill(127)});
+small.paintLayer={frame:15,frames:Array.from({length:16},()=>({png:'data:image/png;base64,'+Buffer.from(smallPNG).toString('base64')}))};
+const smallBundle=await bundleBytes(small,{width:32,toBlob:cb=>cb(new Blob([smallPNG]))},meshMap(small),settings);
+assert.ok(Object.keys(unzipSync(smallBundle)).length>100);
+const smallLoaded=await readProject(new Blob([smallBundle]));assert.equal(smallLoaded.state.paintLayer.frames.length,16);assert.equal(smallLoaded.state.textureSize,32);
+console.log('PASS maximum paint frames with every upscale remain editable.');
