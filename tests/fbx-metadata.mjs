@@ -33,6 +33,10 @@ export function checkBlenderMetadata(bytes){
  }
  for(const name of ['UnitScaleFactor','OriginalUnitScaleFactor','FrontAxis','FrontAxisSign','UpAxis','UpAxisSign','CoordAxis','CoordAxisSign'])assert.ok(properties.some(n=>n.p[0].value===name),name);
  const objects=root.find(n=>n.name==='Objects').children;
+ for(const model of objects.filter(n=>n.name==='Model'&&['Mesh','LimbNode'].includes(n.p[2].value))){
+  const index=model.children.find(n=>n.name==='Properties70')?.children.find(n=>n.p[0]?.value==='DefaultAttributeIndex');
+  assert.equal(index?.p[4].value,0,'mesh/bone must be the default node attribute for Autodesk scene traversal');
+ }
  for(const [kind,label] of Object.entries({AnimationStack:'AnimStack',AnimationLayer:'AnimLayer',AnimationCurveNode:'AnimCurveNode',AnimationCurve:'AnimCurve'})){
   const matches=objects.filter(n=>n.name===kind);assert.ok(matches.length,kind);
   for(const n of matches)assert.equal(n.p[1].value.split('\0\x01')[1],label,`${kind} embedded class`);

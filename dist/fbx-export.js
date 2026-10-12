@@ -39,7 +39,9 @@ function components(m){
  // FBX Euler XYZ is an extrinsic Rz*Ry*Rx product (Three.js calls that ZYX).
  const e=new T.Euler().setFromQuaternion(q,'ZYX');return {t:p.toArray(),r:[e.x,e.y,e.z].map(T.MathUtils.radToDeg)};
 }
-function transformProps(m){const c=components(m);return props([P('Lcl Translation','Lcl Translation',vec(c.t),'A'),P('Lcl Rotation','Lcl Rotation',vec(c.r),'A'),P('Lcl Scaling','Lcl Scaling',vec([1,1,1]),'A'),P('RotationOrder','enum',[I(0)]),P('InheritType','enum',[I(1)])]);}
+// Autodesk defaults this index to -1: geometry can exist in the file while
+// GetNodeAttribute() returns null, making scene traversal see no mesh content.
+function transformProps(m){const c=components(m);return props([P('DefaultAttributeIndex','int',[I(0)]),P('Lcl Translation','Lcl Translation',vec(c.t),'A'),P('Lcl Rotation','Lcl Rotation',vec(c.r),'A'),P('Lcl Scaling','Lcl Scaling',vec([1,1,1]),'A'),P('RotationOrder','enum',[I(0)]),P('InheritType','enum',[I(1)])]);}
 
 // Accept the same already-converted geometry/rig description used by the native Part ZIP.
 export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30,staticMesh=false}={}){

@@ -1,4 +1,4 @@
-import {fbxBytes} from './fbx-export.js?v=6';
+import {fbxBytes} from './fbx-export.js?v=7';
 import {robloxImportFiles} from './roblox-import-files.js?v=2';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';

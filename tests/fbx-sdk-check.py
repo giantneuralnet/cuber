@@ -39,6 +39,25 @@ try:
         texture = function('_ZN6fbxsdk8FbxScene10GetTextureEi', ptr, [ptr, integer])(scene, i)
         filename = function('_ZNK6fbxsdk14FbxFileTexture11GetFileNameEv', string, [ptr])(texture)
         result['textureFiles'].append(os.fsdecode(filename))
+    # Check the reachable scene hierarchy, not only the scene's geometry pool.
+    # GetMesh() can find a non-default attribute even when GetNodeAttribute()
+    # is null. Importers traversing the default attribute would see no mesh.
+    result['nodes'] = []
+    def visit(node):
+        attribute = function('_ZN6fbxsdk7FbxNode16GetNodeAttributeEv', ptr, [ptr])(node)
+        mesh = function('_ZN6fbxsdk7FbxNode7GetMeshEv', ptr, [ptr])(node)
+        skeleton = function('_ZN6fbxsdk7FbxNode11GetSkeletonEv', ptr, [ptr])(node)
+        result['nodes'].append({
+            'name': function('_ZNK6fbxsdk9FbxObject7GetNameEv', string, [ptr])(node).decode(),
+            'mesh': bool(mesh), 'activeMesh': bool(mesh and attribute == mesh),
+            'skeleton': bool(skeleton), 'activeSkeleton': bool(skeleton and attribute == skeleton),
+            'visible': function('_ZNK6fbxsdk7FbxNode13GetVisibilityEv', c.c_double, [ptr])(node),
+            'materials': function('_ZNK6fbxsdk7FbxNode16GetMaterialCountEv', integer, [ptr])(node),
+            'vertices': function('_ZNK6fbxsdk15FbxGeometryBase21GetControlPointsCountEv', integer, [ptr])(mesh) if mesh else 0,
+        })
+        for i in range(function('_ZNK6fbxsdk7FbxNode13GetChildCountEb', integer, [ptr, boolean])(node, False)):
+            visit(function('_ZN6fbxsdk7FbxNode8GetChildEi', ptr, [ptr, integer])(node, i))
+    visit(function('_ZNK6fbxsdk8FbxScene11GetRootNodeEv', ptr, [ptr])(scene))
     print(json.dumps(result))
 finally:
     function('_ZN6fbxsdk10FbxManager7DestroyEv', None, [ptr])(manager)
