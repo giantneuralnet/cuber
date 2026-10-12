@@ -23,8 +23,9 @@ function property(p){
  return b;
 }
 function binary(nodes){
- const prepare=n=>{n.nameBytes=enc.encode(n.name);n.bytes=n.props.map(property);n.propertyLength=n.bytes.reduce((s,b)=>s+b.length,0);n.children.forEach(prepare);n.length=13+n.nameBytes.length+n.propertyLength+n.children.reduce((s,c)=>s+c.length,0)+(n.children.length?13:0);};nodes.forEach(prepare);
- const end=27+nodes.reduce((s,n)=>s+n.length,0)+13,padding=(16-(end+16)%16)%16;
+ const prepare=(n,last=false)=>{n.nameBytes=enc.encode(n.name);n.bytes=n.props.map(property);n.propertyLength=n.bytes.reduce((s,b)=>s+b.length,0);n.children.forEach((c,i)=>prepare(c,i===n.children.length-1));const sentinel=n.children.length||(!n.props.length&&!last)||['AnimationStack','AnimationLayer'].includes(n.name);n.length=13+n.nameBytes.length+n.propertyLength+n.children.reduce((s,c)=>s+c.length,0)+(sentinel?13:0);};nodes.forEach((n,i)=>prepare(n,i===nodes.length-1));
+ // Four reserved bytes follow the footer ID, then 1–16 bytes align the version.
+ const end=27+nodes.reduce((s,n)=>s+n.length,0)+13,padding=16-(end+20)%16;
  const bytes=new Uint8Array(end+16+padding+4+4+120+16),v=new DataView(bytes.buffer);bytes.set(enc.encode('Kaydara FBX Binary  \0\x1a\0'));v.setUint32(23,7400,true);
  const write=(n,start)=>{v.setUint32(start,start+n.length,true);v.setUint32(start+4,n.props.length,true);v.setUint32(start+8,n.propertyLength,true);bytes[start+12]=n.nameBytes.length;let at=start+13;bytes.set(n.nameBytes,at);at+=n.nameBytes.length;for(const b of n.bytes){bytes.set(b,at);at+=b.length;}for(const c of n.children)at=write(c,at);return start+n.length;};
  let at=27;for(const n of nodes)at=write(n,at);
@@ -61,7 +62,7 @@ export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30,staticMes
  add('Model',rig,asset.name||'Cuber','Null',[N('Version',[I(232)]),transformProps(identity)]);link(rig,0);
  add('Material',mat,'Atlas','',[N('Version',[I(102)]),N('ShadingModel',['lambert']),N('MultiLayer',[I(0)]),props([P('DiffuseColor','Color',vec([1,1,1])),P('DiffuseFactor','Number',[D(1)]),P('TransparencyFactor','Number',[D(0)]),P('TransparentColor','Color',vec([0,0,0])),P('Opacity','Number',[D(1)])])]);
  add('Texture',tex,'Atlas','',[N('Type',['TextureVideoClip']),N('Version',[I(202)]),N('TextureName',[named('Atlas','Texture')]),N('Media',[named('Atlas','Video')]),N('FileName',[textureFilename]),N('RelativeFilename',[textureFilename]),props([P('AlphaSource','enum',[I(2)]),P('PremultiplyAlpha','bool',[I(0)]),P('UVSet','KString',['UVMap']),P('UseMaterial','bool',[I(1)]),P('WrapModeU','enum',[I(1)]),P('WrapModeV','enum',[I(1)])])]);
- add('Video',video,'Atlas','Clip',[N('Type',['Clip']),N('UseMipMap',[I(0)]),N('Filename',[textureFilename]),N('RelativeFilename',[textureFilename]),N('Content',[A('R',png)])]);link(video,tex);link(tex,mat,'DiffuseColor');link(tex,mat,'TransparentColor');
+ add('Video',video,'Atlas','Clip',[N('Type',['Clip']),props([N('P',['Path','KString','Url','',textureFilename])]),N('UseMipMap',[I(0)]),N('Filename',[textureFilename]),N('RelativeFilename',[textureFilename]),N('Content',[A('R',png)])]);link(video,tex);link(tex,mat,'DiffuseColor');link(tex,mat,'TransparentColor');
  for(const part of asset.parts){if(staticMesh){ids.set(part.id,{mesh:alloc(),geo:alloc(),world:identity});continue;}const joint=joints.get(part.id);if(!joint)throw Error('Missing joint');ids.set(part.id,{bone:alloc(),attr:alloc(),mesh:alloc(),geo:alloc(),skin:alloc(),cluster:alloc(),world:matrix(part.restTransform),boneWorld:matrix(part.restTransform).multiply(matrix(joint.c1))});}
  for(const part of asset.parts){
   const x=ids.get(part.id),name=staticMesh?part.name:idName(part);
@@ -117,10 +118,14 @@ export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30,staticMes
  }
  const counts=new Map();for(const n of objects)counts.set(n.name,(counts.get(n.name)||0)+1);
  return binary([
-  N('FBXHeaderExtension',[],[N('FBXHeaderVersion',[I(1003)]),N('FBXVersion',[I(7400)]),N('EncryptionType',[I(0)]),N('Creator',['Cuber'])]),
+  N('FBXHeaderExtension',[],[N('FBXHeaderVersion',[I(1003)]),N('FBXVersion',[I(7400)]),N('EncryptionType',[I(0)]),N('CreationTimeStamp',[],Object.entries({Version:1000,Year:1970,Month:1,Day:1,Hour:10,Minute:0,Second:0,Millisecond:0}).map(([k,v])=>N(k,[I(v)]))),N('Creator',['Cuber'])]),
+  // Autodesk's importer requires these records. Use Blender's stable ID/time
+  // pair, matching the binary footer, to keep exports deterministic.
+  N('FileId',[A('R',new Uint8Array([0x28,0xb3,0x2a,0xeb,0xb6,0x24,0xcc,0xc2,0xbf,0xc8,0xb0,0x2a,0xa9,0x2b,0xfc,0xf1]))]),
+  N('CreationTime',['1970-01-01 10:00:00:000']),N('Creator',['Cuber']),
   N('GlobalSettings',[],[N('Version',[I(1000)]),props([P('UpAxis','int',[I(1)]),P('UpAxisSign','int',[I(1)]),P('FrontAxis','int',[I(2)]),P('FrontAxisSign','int',[I(1)]),P('CoordAxis','int',[I(0)]),P('CoordAxisSign','int',[I(1)]),P('UnitScaleFactor','double',[D(28)]),P('OriginalUnitScaleFactor','double',[D(28)]),P('TimeMode','enum',[I(6)]),P('TimeSpanStart','KTime',[L(0)]),P('TimeSpanStop','KTime',[L(time(duration))])])]),
   N('Documents',[],[N('Count',[I(1)]),N('Document',[L(1),asset.name||'Cuber','Scene'],[props([P('SourceObject','object',[]),P('ActiveAnimStackName','KString',[asset.animations?.[0]?.name||''])]),N('RootNode',[L(0)])])]),
   N('References'),N('Definitions',[],[N('Version',[I(100)]),N('Count',[I(objects.length)]),...[...counts].map(([name,count])=>N('ObjectType',[name],[N('Count',[I(count)])]))]),
-  N('Objects',[],objects),N('Connections',[],connections),N('Takes',[],[N('Current',[''])])
+  N('Objects',[],objects),N('Connections',[],connections),N('Takes',[],[N('Current',['']),...(asset.animations||[]).filter(a=>a.keyframes?.length).map(a=>N('Take',[a.name||'Animation'],[N('FileName',[(a.name||'Animation')+'.tak']),N('LocalTime',[L(0),L(time(a.keyframes.at(-1).time))]),N('ReferenceTime',[L(0),L(time(a.keyframes.at(-1).time))])]))])
  ]);
 }

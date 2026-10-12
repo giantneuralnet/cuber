@@ -22,9 +22,19 @@ const asset=assetDescription({name:'FBX rig',boxes,animations},meshes,256),bytes
 assert.equal(new TextDecoder().decode(bytes.slice(0,21)),'Kaydara FBX Binary  \0');assert.equal(new DataView(bytes.buffer).getUint32(23,true),7400);
 assert.ok(bytes.length>png.length);assert.deepEqual(bytes,fbxBytes(asset,png),'deterministic bytes');
 checkBlenderMetadata(fbxBytes({...asset,animations:[...asset.animations,{...asset.animations[1],name:'Still'}]},png));
-if(!inspector){console.log('PASS FBX binary header and deterministic export. Set FBX_INSPECTOR for independent rig/UV/animation checks.');process.exit(0);}
 const path=join(mkdtempSync(join(tmpdir(),'cuber-fbx-')),'rig.fbx');writeFileSync(path,bytes);
 const staticPath=path.replace('rig.fbx','static.fbx');writeFileSync(staticPath,fbxBytes(asset,png,{staticMesh:true}));
+if(process.env.FBX_SDK_LIBRARY){
+ for(const [file,count,animations,deformers] of [[path,2,2,1],[staticPath,1,0,0]]){
+  const imported=JSON.parse(execFileSync('python3',[new URL('./fbx-sdk-check.py',import.meta.url).pathname,file]));
+  assert.equal(imported.imported,true);assert.equal(imported.meshes.length,count);assert.equal(imported.animations,animations);
+  assert.equal(imported.textures,1);assert.equal(imported.materials,1);
+  assert.deepEqual(readFileSync(imported.textureFiles[0]),png,'Autodesk extracts the embedded texture unchanged');
+  for(const m of imported.meshes){assert.equal(m.uvLayers,1);assert.equal(m.deformers,deformers);}
+ }
+ console.log('PASS Autodesk SDK imports rigged and static FBX with geometry, UVs, materials and animation stacks.');
+}
+if(!inspector){console.log('PASS FBX binary metadata and deterministic export. Set FBX_INSPECTOR for independent rig/UV/animation checks.');process.exit(0);}
 const merged=JSON.parse(execFileSync(inspector,[staticPath],{maxBuffer:20*1024*1024}));
 assert.equal(merged.meshes.length,1);assert.equal(merged.bones,0);assert.equal(merged.animations.length,0);
 assert.equal(merged.materials,1);assert.equal(merged.textures,1);assert.equal(merged.embeddedBytes,png.length);
