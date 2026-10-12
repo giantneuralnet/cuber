@@ -24,6 +24,17 @@ assert.ok(bytes.length>png.length);assert.deepEqual(bytes,fbxBytes(asset,png),'d
 checkBlenderMetadata(fbxBytes({...asset,animations:[...asset.animations,{...asset.animations[1],name:'Still'}]},png));
 if(!inspector){console.log('PASS FBX binary header and deterministic export. Set FBX_INSPECTOR for independent rig/UV/animation checks.');process.exit(0);}
 const path=join(mkdtempSync(join(tmpdir(),'cuber-fbx-')),'rig.fbx');writeFileSync(path,bytes);
+const staticPath=path.replace('rig.fbx','static.fbx');writeFileSync(staticPath,fbxBytes(asset,png,{staticMesh:true}));
+const merged=JSON.parse(execFileSync(inspector,[staticPath],{maxBuffer:20*1024*1024}));
+assert.equal(merged.meshes.length,1);assert.equal(merged.bones,0);assert.equal(merged.animations.length,0);
+assert.equal(merged.materials,1);assert.equal(merged.textures,1);assert.equal(merged.embeddedBytes,png.length);
+assert.equal(merged.meshes[0].skins,0);assert.equal(merged.meshes[0].triangles,24);
+const expectedMerged=expectedVertices(asset);
+for(const key of ['positions','uvs']){
+ const expected=expectedMerged.flatMap(m=>m[key]),actual=merged.meshes[0][key];assert.equal(actual.length,expected.length);
+ actual.forEach((v,i)=>assert.ok(Math.abs(v-expected[i])<2e-5,`static ${key}[${i}]`));
+}
+console.log('PASS static FBX: one mesh, exact transformed geometry and UVs, shared embedded texture, no bones or animation.');
 for(const t of [0,.5,1]){
  const parsed=JSON.parse(execFileSync(inspector,[path,String(t)],{maxBuffer:20*1024*1024}));assert.equal(parsed.bones,2);assert.equal(parsed.materials,1);assert.equal(parsed.textures,1);assert.equal(parsed.embeddedBytes,png.length);compare(parsed.meshes,expectedVertices(asset));
  assert.deepEqual(parsed.animations.map(a=>a.name),['Turn','Rest']);

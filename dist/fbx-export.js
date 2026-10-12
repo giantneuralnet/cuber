@@ -41,9 +41,19 @@ function components(m){
 function transformProps(m){const c=components(m);return props([P('Lcl Translation','Lcl Translation',vec(c.t),'A'),P('Lcl Rotation','Lcl Rotation',vec(c.r),'A'),P('Lcl Scaling','Lcl Scaling',vec([1,1,1]),'A'),P('RotationOrder','enum',[I(0)]),P('InheritType','enum',[I(1)])]);}
 
 // Accept the same already-converted geometry/rig description used by the native Part ZIP.
-export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30}={}){
+export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30,staticMesh=false}={}){
  if(!asset.parts?.length||!png?.length)throw Error('A model and PNG texture are required');
  if(!Number.isFinite(fps)||fps<1||fps>120)throw Error('Invalid FBX sample rate');
+ // Bake each part into the shared rest-space mesh, retaining face seams and UVs.
+ if(staticMesh){
+  const mesh={positions:[],normals:[],uvs:[],indices:[]};
+  for(const part of asset.parts){const world=matrix(part.restTransform),offset=mesh.positions.length;
+   mesh.positions.push(...part.mesh.positions.map(p=>new T.Vector3(...p).applyMatrix4(world).toArray()));
+   mesh.normals.push(...part.mesh.normals.map(n=>new T.Vector3(...n).transformDirection(world).toArray()));
+   mesh.uvs.push(...part.mesh.uvs);mesh.indices.push(...part.mesh.indices.map(i=>i+offset));
+  }
+  asset={...asset,parts:[{id:0,name:asset.name||'Cuber',restTransform:{position:[0,0,0],rotation:[0,0,0,1]},mesh}],joints:[],animations:[]};
+ }
  const objects=[],connections=[],bindNodes=[],identity=new T.Matrix4(),ids=new Map();let serial=1000;
  const alloc=()=>serial++,add=(kind,id,name,type,children)=>objects.push(N(kind,[L(id),named(name,classes[kind]??kind),type],children));
  const link=(child,parent,property)=>connections.push(N('C',[property?'OP':'OO',L(child),L(parent),...(property?[property]:[])]));
@@ -52,11 +62,14 @@ export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30}={}){
  add('Material',mat,'Atlas','',[N('Version',[I(102)]),N('ShadingModel',['lambert']),N('MultiLayer',[I(0)]),props([P('DiffuseColor','Color',vec([1,1,1])),P('DiffuseFactor','Number',[D(1)]),P('TransparencyFactor','Number',[D(0)]),P('TransparentColor','Color',vec([0,0,0])),P('Opacity','Number',[D(1)])])]);
  add('Texture',tex,'Atlas','',[N('Type',['TextureVideoClip']),N('Version',[I(202)]),N('TextureName',[named('Atlas','Texture')]),N('Media',[named('Atlas','Video')]),N('FileName',[textureFilename]),N('RelativeFilename',[textureFilename]),props([P('AlphaSource','enum',[I(2)]),P('PremultiplyAlpha','bool',[I(0)]),P('UVSet','KString',['UVMap']),P('UseMaterial','bool',[I(1)]),P('WrapModeU','enum',[I(1)]),P('WrapModeV','enum',[I(1)])])]);
  add('Video',video,'Atlas','Clip',[N('Type',['Clip']),N('UseMipMap',[I(0)]),N('Filename',[textureFilename]),N('RelativeFilename',[textureFilename]),N('Content',[A('R',png)])]);link(video,tex);link(tex,mat,'DiffuseColor');link(tex,mat,'TransparentColor');
- for(const part of asset.parts){const joint=joints.get(part.id);if(!joint)throw Error('Missing joint');ids.set(part.id,{bone:alloc(),attr:alloc(),mesh:alloc(),geo:alloc(),skin:alloc(),cluster:alloc(),world:matrix(part.restTransform),boneWorld:matrix(part.restTransform).multiply(matrix(joint.c1))});}
+ for(const part of asset.parts){if(staticMesh){ids.set(part.id,{mesh:alloc(),geo:alloc(),world:identity});continue;}const joint=joints.get(part.id);if(!joint)throw Error('Missing joint');ids.set(part.id,{bone:alloc(),attr:alloc(),mesh:alloc(),geo:alloc(),skin:alloc(),cluster:alloc(),world:matrix(part.restTransform),boneWorld:matrix(part.restTransform).multiply(matrix(joint.c1))});}
  for(const part of asset.parts){
-  const x=ids.get(part.id),joint=joints.get(part.id),parent=ids.get(joint.parentPartId),local=(parent?parent.boneWorld.clone().invert():identity.clone()).multiply(x.boneWorld),name=idName(part);
+  const x=ids.get(part.id),name=staticMesh?part.name:idName(part);
+  if(!staticMesh){
+  const joint=joints.get(part.id),parent=ids.get(joint.parentPartId),local=(parent?parent.boneWorld.clone().invert():identity.clone()).multiply(x.boneWorld);
   add('Model',x.bone,`Joint_${name}`,'LimbNode',[N('Version',[I(232)]),transformProps(local),N('Shading',[I(1)]),N('Culling',['CullingOff'])]);link(x.bone,parent?.bone??rig);
   add('NodeAttribute',x.attr,`Joint_${name}`,'LimbNode',[N('TypeFlags',['Skeleton']),props([P('Size','double',[D(.2)])])]);link(x.attr,x.bone);
+  }
   add('Model',x.mesh,name,'Mesh',[N('Version',[I(232)]),transformProps(identity),N('Shading',[I(1)]),N('Culling',['CullingOff'])]);link(x.mesh,rig);link(mat,x.mesh);
   const mesh=part.mesh,vertices=mesh.positions.flatMap(p=>new T.Vector3(...p).applyMatrix4(x.world).toArray());
   const normals=mesh.indices.flatMap(i=>new T.Vector3(...mesh.normals[i]).transformDirection(x.world).toArray());
@@ -67,12 +80,15 @@ export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30}={}){
    N('LayerElementMaterial',[I(0)],[N('Version',[I(101)]),N('Name',['']),N('MappingInformationType',['AllSame']),N('ReferenceInformationType',['IndexToDirect']),N('Materials',[A('i',[0])])]),
    N('Layer',[I(0)],[N('Version',[I(100)]),...['Normal','UV','Material'].map(t=>N('LayerElement',[],[N('Type',[`LayerElement${t}`]),N('TypedIndex',[I(0)])]))])
   ]);link(x.geo,x.mesh);
+  if(staticMesh)continue;
   add('Deformer',x.skin,`${name}_Skin`,'Skin',[N('Version',[I(101)]),N('Link_DeformAcuracy',[D(50)])]);link(x.skin,x.geo);
   add('Deformer',x.cluster,`${name}_Weight`,'Cluster',[N('Version',[I(100)]),N('UserData',['','']),N('Indexes',[A('i',mesh.positions.map((_,i)=>i))]),N('Weights',[A('d',mesh.positions.map(()=>1))]),N('Transform',[A('d',x.boneWorld.clone().invert().elements)]),N('TransformLink',[A('d',x.boneWorld.elements)])]);link(x.cluster,x.skin);link(x.bone,x.cluster);
   bindNodes.push(N('PoseNode',[],[N('Node',[L(x.bone)]),N('Matrix',[A('d',x.boneWorld.elements)])]),N('PoseNode',[],[N('Node',[L(x.mesh)]),N('Matrix',[A('d',identity.elements)])]));
  }
+ if(!staticMesh){
  bindNodes.push(N('PoseNode',[],[N('Node',[L(rig)]),N('Matrix',[A('d',identity.elements)])]));
  add('Pose',alloc(),'BindPose','BindPose',[N('Type',['BindPose']),N('Version',[I(100)]),N('NbPoseNodes',[I(bindNodes.length)]),...bindNodes]);
+ }
  let duration=0;
  for(const animation of asset.animations||[]){
   const frames=animation.keyframes;if(!frames?.length)continue;

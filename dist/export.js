@@ -1,4 +1,4 @@
-import {fbxBytes} from './fbx-export.js?v=4';
+import {fbxBytes} from './fbx-export.js?v=5';
 import {robloxImportFiles} from './roblox-import-files.js?v=2';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
@@ -58,7 +58,7 @@ export function projectData(state,atlas){return {format:'cube-studio',version:3,
 export const exportFilename=state=>(state.name?.trim()||'cube-asset').replace(/[<>:\"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/g,'').slice(0,80)||'cube-asset';
 const bundleGuide=`CUBER PROJECT / ASSET ZIP v2
 
-model.fbx is an optional mesh interchange copy with a bone rig, baked motion, and an embedded current-frame PNG. If the current texture layer changes the preview, fbx-atlas.png is its flattened texture; atlas.png remains the editable base. For native Roblox Parts, use the bundled importer and ignore model.fbx.
+model.fbx is an optional mesh interchange copy with a bone rig, baked motion, and an embedded current-frame PNG. If the current texture layer changes the preview, fbx-atlas.png is its flattened texture; atlas.png remains the editable base. model-static.fbx combines all parts into one textured mesh in the rest pose, with no rig or animations. Both FBX files use the same atlas. For native Roblox Parts, use the bundled importer and ignore the FBX files.
 
 asset.json describes the complete rig and every animation. atlas.png is its one shared texture. Open this same ZIP in Cuber to resume editing. The editor field holds atlas placement and workspace settings; parts, joints and animations are stored only once. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
 
@@ -97,6 +97,7 @@ export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas)
     'asset.json':strToU8(JSON.stringify(description,null,2)),
     'atlas.png':png,
     'model.fbx':fbxBytes(description,fbxPng,{textureFilename}),
+    'model-static.fbx':fbxBytes(description,fbxPng,{textureFilename,staticMesh:true}),
     ...(separateTexture?{'fbx-atlas.png':fbxPng}:{}),
     'README.txt':strToU8(bundleGuide),
     ...Object.fromEntries(Object.entries(robloxImportFiles).map(([name,text])=>[name,strToU8(text)])),
