@@ -1,0 +1,17 @@
+<!doctype html><html><body><script type="module">
+import * as T from '../dist/vendor/three.module.js';
+import {createPaintMaterials} from '../dist/paint-material.js';
+const results=[];
+for(const reverse of [false,true])for(const alpha of [255,128,0]){
+ const renderer=new T.WebGLRenderer({antialias:false,preserveDrawingBuffer:true});renderer.setSize(128,128);renderer.setClearColor(0x000000);document.body.append(renderer.domElement);
+ const scene=new T.Scene(),camera=new T.PerspectiveCamera(40,1,.1,100);camera.position.z=5;camera.lookAt(0,0,0);scene.add(new T.AmbientLight(0xffffff,2));
+ const texture=new T.DataTexture(new Uint8Array([255,0,0,alpha]),1,1);texture.colorSpace=T.SRGBColorSpace;texture.needsUpdate=true;
+ const mats=createPaintMaterials(texture),geometry=new T.BoxGeometry(2,2,10),near=new T.Mesh(geometry,mats.opaque);near.position.z=-3;near.add(new T.Mesh(geometry,mats.translucent));
+ const far=new T.Mesh(new T.BoxGeometry(1,1,1),new T.MeshStandardMaterial({color:0x0000ff,roughness:1}));far.position.z=.5;
+ // Near red face is at z=2, but its center is farther away than the blue cube.
+ for(const m of reverse?[far,near]:[near,far])scene.add(m);
+ const target=new T.WebGLRenderTarget(128,128);renderer.setRenderTarget(target);renderer.render(scene,camera);const pixel=new Uint8Array(4);renderer.readRenderTargetPixels(target,64,64,1,1,pixel);renderer.setRenderTarget(null);renderer.render(scene,camera);
+ results.push({reverse,alpha,pixel:[...pixel]});
+}
+window.depthResults=results;
+</script></body></html>
