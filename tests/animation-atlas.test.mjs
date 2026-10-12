@@ -13,7 +13,7 @@ for(const axis of ['x','y','z']){
  state.animations[0].frames=[{time:0,pose:structuredClone(pose)}];state.animations.push({id:1,name:'Animation 2',frames:[{time:0,pose:structuredClone(pose)}]});const edited=editJoint(state,1,a);assert.equal(allFrames(edited).length,2);assert.notEqual(edited.animations[0].frames[0].pose,edited.animations[1].frames[0].pose);
 }
 const sizes=[[1,1,1],[3,1.25,.2],[.25,6,2.05],[12,12,12]];
-for(const size of [256,512,1024])for(const count of [4,128]){
+for(const size of [32,64,128,256,512,1024])for(const count of [4,128]){
  const boxes=Array.from({length:count},(_,slot)=>({slot,size:sizes[slot%sizes.length]})),layout=packAtlas(boxes,size);assert.ok(validateLayout(layout,boxes,size));
  for(const b of boxes)for(let f=0;f<6;f++){const r=layout.faces[b.slot*6+f],[w,h]=faceSize(b,f);assert.ok(Math.abs(r.spanW/w-layout.density)<1e-8);assert.ok(Math.abs(r.spanH/h-layout.density)<1e-8);}
  const invalid=structuredClone(layout);invalid.faces[0].x=size;assert.equal(validateLayout(invalid,boxes,size),false);

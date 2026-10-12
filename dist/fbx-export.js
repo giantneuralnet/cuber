@@ -1,5 +1,5 @@
 import * as T from './vendor/three.module.js';
-import {assetDescription,exportFilename,triggerDownload} from './export.js?v=6';
+import {assetDescription,exportFilename,triggerDownload} from './export.js?v=7';
 
 // FBX 7.4 binary. Arrays are uncompressed so the writer needs no runtime dependencies.
 const enc=new TextEncoder(), I=v=>({type:'I',value:v}), L=v=>({type:'L',value:v}), D=v=>({type:'D',value:v});
@@ -47,9 +47,9 @@ export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30}={}){
  const link=(child,parent,property)=>connections.push(N('C',[property?'OP':'OO',L(child),L(parent),...(property?[property]:[])]));
  const rig=alloc(),mat=alloc(),tex=alloc(),video=alloc(),joints=new Map(asset.joints.map(j=>[j.childPartId,j]));
  add('Model',rig,asset.name||'Cuber','Null',[N('Version',[I(232)]),transformProps(identity)]);link(rig,0);
- add('Material',mat,'Atlas','',[N('Version',[I(102)]),N('ShadingModel',['lambert']),N('MultiLayer',[I(0)]),props([P('DiffuseColor','Color',vec([1,1,1])),P('DiffuseFactor','Number',[D(1)]),P('TransparencyFactor','Number',[D(0)])])]);
- add('Texture',tex,'Atlas','',[N('Type',['TextureVideoClip']),N('Version',[I(202)]),N('TextureName',[named('Atlas','Texture')]),N('Media',[named('Atlas','Video')]),N('FileName',[textureFilename]),N('RelativeFilename',[textureFilename]),props([P('UVSet','KString',['UVMap']),P('UseMaterial','bool',[I(1)]),P('WrapModeU','enum',[I(1)]),P('WrapModeV','enum',[I(1)])])]);
- add('Video',video,'Atlas','Clip',[N('Type',['Clip']),N('UseMipMap',[I(0)]),N('Filename',[textureFilename]),N('RelativeFilename',[textureFilename]),N('Content',[A('R',png)])]);link(video,tex);link(tex,mat,'DiffuseColor');
+ add('Material',mat,'Atlas','',[N('Version',[I(102)]),N('ShadingModel',['lambert']),N('MultiLayer',[I(0)]),props([P('DiffuseColor','Color',vec([1,1,1])),P('DiffuseFactor','Number',[D(1)]),P('TransparencyFactor','Number',[D(0)]),P('TransparentColor','Color',vec([0,0,0])),P('Opacity','Number',[D(1)])])]);
+ add('Texture',tex,'Atlas','',[N('Type',['TextureVideoClip']),N('Version',[I(202)]),N('TextureName',[named('Atlas','Texture')]),N('Media',[named('Atlas','Video')]),N('FileName',[textureFilename]),N('RelativeFilename',[textureFilename]),props([P('AlphaSource','enum',[I(2)]),P('PremultiplyAlpha','bool',[I(0)]),P('UVSet','KString',['UVMap']),P('UseMaterial','bool',[I(1)]),P('WrapModeU','enum',[I(1)]),P('WrapModeV','enum',[I(1)])])]);
+ add('Video',video,'Atlas','Clip',[N('Type',['Clip']),N('UseMipMap',[I(0)]),N('Filename',[textureFilename]),N('RelativeFilename',[textureFilename]),N('Content',[A('R',png)])]);link(video,tex);link(tex,mat,'DiffuseColor');link(tex,mat,'TransparentColor');
  for(const part of asset.parts){const joint=joints.get(part.id);if(!joint)throw Error('Missing joint');ids.set(part.id,{bone:alloc(),attr:alloc(),mesh:alloc(),geo:alloc(),skin:alloc(),cluster:alloc(),world:matrix(part.restTransform),boneWorld:matrix(part.restTransform).multiply(matrix(joint.c1))});}
  for(const part of asset.parts){
   const x=ids.get(part.id),joint=joints.get(part.id),parent=ids.get(joint.parentPartId),local=(parent?parent.boneWorld.clone().invert():identity.clone()).multiply(x.boneWorld),name=idName(part);

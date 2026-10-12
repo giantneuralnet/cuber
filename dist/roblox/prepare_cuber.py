@@ -83,7 +83,7 @@ def prepare(source, destination):
             raise ValueError('Expected already-converted Roblox coordinates')
         texture = asset['texture']
         width, height = texture['width'], texture['height']
-        if width != height or width not in (128, 256, 512, 1024, 2048, 4096):
+        if width != height or width not in (32, 64, 128, 256, 512, 1024, 2048, 4096):
             raise ValueError('Unsupported atlas dimensions')
         parts = []
         seen = set()
@@ -117,7 +117,7 @@ def prepare(source, destination):
                 blobs[name] = archive.read(frame['file'])
                 images['paintFrames'][str(index)] = name
         prepared = {'version': 1, 'name': asset.get('name', Path(source).stem),
-                    'rigRoot': asset['rigRoot'], 'parts': parts,
+                    'rigRoot': asset['rigRoot'], 'parts': parts, 'textureAlpha': texture.get('alphaMode') == 'blend',
                     'joints': [{k: joint[k] for k in ['id', 'parentPartId', 'childPartId', 'c0', 'c1']} for joint in asset['joints']],
                     'animations': animations, 'images': images}
         text = json.dumps(prepared, separators=(',', ':'), allow_nan=False)

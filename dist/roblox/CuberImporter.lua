@@ -60,6 +60,7 @@ function Importer.Import(data, options)
         block.CFrame = frame(part.restTransform)
         block.Color = Color3.fromHex(part.baseColor)
         block.Material = Enum.Material.SmoothPlastic
+        block.Transparency = data.textureAlpha and 1 or 0
         block.Shape = Enum.PartType.Block
         block.Anchored = false
         block.Massless = true

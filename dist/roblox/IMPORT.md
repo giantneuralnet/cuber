@@ -108,3 +108,5 @@ This toolkit is based on the supplied native-Part importer and has local prepara
 - Parts and joints: https://create.roblox.com/docs/reference/engine/classes/Part and https://create.roblox.com/docs/reference/engine/classes/Motor6D
 - Face images: https://create.roblox.com/docs/reference/engine/classes/SurfaceGui and https://create.roblox.com/docs/reference/engine/classes/ImageLabel
 - Model placement/scaling: https://create.roblox.com/docs/reference/engine/classes/Model
+
+New exports preserve PNG alpha. When textureAlpha is set by the preparer, the native Part backing is transparent and its SurfaceGui images supply visible pixels. Existing bundles without that flag retain their original backing. Atlas sizes from 32 through 1024 pixels are supported.

@@ -31,9 +31,8 @@ const larger=[{...boxes[0],size:[2,1.5,.5]}],next=packAtlas(larger,256),overlay=
 for(const [key,r] of Object.entries(next.faces))for(let y=-1;y<=r.h;y++)for(let x=-1;x<=r.w;x++){
  const original=old.faces[key],sx=Math.floor(original.x+(Math.max(0,Math.min(r.w-1,x))+.5)*original.w/r.w),sy=Math.floor(original.y+(Math.max(0,Math.min(r.h-1,y))+.5)*original.h/r.h),si=(sy*256+sx)*4,di=((r.y+y)*256+r.x+x)*4;
  assert.deepEqual(overlay.slice(di,di+4),source.data.slice(si,si+4));
- assert.equal(base[di+3],255);
- if(source.data[si+3]===255)assert.deepEqual(base.slice(di,di+4),source.data.slice(si,si+4));
+ assert.deepEqual(base.slice(di,di+4),source.data.slice(si,si+4));
 }
 const blank=repackPixelData(null,boxes,old,null,{overlay:true});assert.ok(blank.every(v=>v===0));
-const filled=repackPixelData(null,boxes,old,null),r=old.faces[0],offset=(r.y*256+r.x)*4;assert.deepEqual([...filled.slice(offset,offset+4)],[32,64,96,255]);
-console.log('PASS: inset pivots, bounded edge-on dragging, exact nearest pixels, alpha overlays and atlas gutters.');
+const filled=repackPixelData(null,boxes,old,null),r=old.faces[0],offset=(r.y*256+r.x)*4;assert.deepEqual([...filled.slice(offset,offset+4)],[0,0,0,0]);
+console.log('PASS: inset pivots, bounded edge-on dragging, exact nearest pixels, base/overlay alpha and atlas gutters.');

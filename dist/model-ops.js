@@ -2,7 +2,7 @@ import * as THREE from './vendor/three.module.js';
 const V=a=>new THREE.Vector3().fromArray(a), Q=a=>new THREE.Quaternion().fromArray(a);
 export const dimensions=b=>b.size||[1,1,1];
 export const EDIT_STEP=.05;
-export const TEXTURE_SIZES=[256,512,1024];
+export const TEXTURE_SIZES=[32,64,128,256,512,1024];
 export const GRID_SIZES=[0,.05,.1,.2,.25];
 export const snap=(value,step=EDIT_STEP)=>step?Math.round(value/step)*step:value;
 export function steppedValue(value,origin,min=-Infinity,max=Infinity,step=EDIT_STEP){if(!step)return THREE.MathUtils.clamp(value,min,max);const steps=Math.max(Math.ceil((min-origin)/step-1e-8),Math.min(Math.floor((max-origin)/step+1e-8),Math.round((value-origin)/step)));return origin+steps*step;}

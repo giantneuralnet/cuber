@@ -1,4 +1,4 @@
-import {robloxImportFiles} from './roblox-import-files.js?v=1';
+import {robloxImportFiles} from './roblox-import-files.js?v=2';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
 import {validateLayout,legacyLayout} from './atlas-layout.js';
@@ -38,7 +38,7 @@ export function assetDescription(state,meshes,textureSize=state.textureSize,sett
     format:'cube-studio-asset',version:2,name:state.name?.trim()||'Cube Asset',
     editor:{version:1,nextId:state.nextId??Math.max(...state.boxes.map(b=>b.id))+1,nextAnimationId:state.nextAnimationId??Math.max(...animations.map(a=>a.id))+1,animation:state.animation??0,frame:state.frame??0,gridSize:state.gridSize??.25,atlasLayout:structuredClone(state.atlasLayout||legacyLayout(state.boxes,textureSize)),parts:Object.fromEntries(state.boxes.map(b=>[b.id,{slot:b.slot,...(b.normal?{normal:[...b.normal]}:{})}])),paintFrame:state.paintLayer?.frame??0,settings:structuredClone(settings)},
     coordinates:{handedness:'right',up:'+Y',forward:'-Z',units:'studs',quaternionOrder:'xyzw',rotation:'active-local-to-parent',conversionApplied:true,sourceToAsset:[[-1,0,0],[0,1,0],[0,0,-1]]},
-    texture:{file:'atlas.png',width:textureSize,height:textureSize,filter:'nearest',uvOrigin:'bottom-left',imageOrigin:'top-left',colorSpace:'srgb'},
+    texture:{file:'atlas.png',width:textureSize,height:textureSize,filter:'nearest',uvOrigin:'bottom-left',imageOrigin:'top-left',colorSpace:'srgb',alphaMode:'blend'},
     ...(state.paintLayer?{paintLayer:{version:1,name:'Layer 1',blend:'source-over',uvLayout:'base-texture',frames:state.paintLayer.frames.map((f,i)=>({file:f.png?`paint-layer/frame-${i}.png`:null}))}}:{}),
     rigRoot:{name:'RigRoot',restTransform:transform(rootFrame),anchored:true,visible:false},
     parts:state.boxes.map(b=>({id:b.id,name:b.name||`Cube_${b.id}`,shape:'box',size:[...dimensions(b)],restTransform:transform(matrix(b)),editorAnchor:b.anchor,anchored:false,canCollide:false,massless:true,baseColor:b.color,texture:'atlas.png',mesh:meshData(b,meshes.get(b.id).geometry)})),

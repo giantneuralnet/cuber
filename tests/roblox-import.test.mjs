@@ -26,12 +26,13 @@ try{
  const original=JSON.parse(strFromU8(files['asset.json']));original.animations[1].loop=false;original.animations[1].events=[{time:.75,name:'ExampleEvent'}];files['asset.json']=strToU8(JSON.stringify(original));writeFileSync(zip,zipSync(files));
  const output=execFileSync('python3',[script,zip,'--out',out],{encoding:'utf8'});assert.ok(output.length<1000);
  const lua=readFileSync(join(out,'PreparedAsset.lua'),'utf8');const match=lua.match(/JSONDecode\(\[=\[([\s\S]*)\]=\]\)/);assert.ok(match);
- const data=JSON.parse(match[1]);assert.equal(data.version,1);assert.equal(data.parts.length,1);assert.deepEqual(data.parts[0].restTransform,original.parts[0].restTransform);assert.deepEqual(data.joints[0].c0,original.joints[0].c0);
+ const data=JSON.parse(match[1]);assert.equal(data.version,1);assert.equal(data.textureAlpha,true);assert.equal(data.parts.length,1);assert.deepEqual(data.parts[0].restTransform,original.parts[0].restTransform);assert.deepEqual(data.joints[0].c0,original.joints[0].c0);
  assert.deepEqual(data.parts[0].faces.map(f=>f.face),['Left','Right','Top','Bottom','Front','Back']);assert.deepEqual(data.parts[0].faces.map(f=>f.rotation),[0,0,180,180,0,0]);
  assert.ok(data.parts[0].faces.every(f=>f.rect[2]>=1&&f.rect[3]>=1));
  assert.deepEqual(data.animations.Still.frames,[]);assert.equal(data.animations['Still [1]'].loop,false);assert.equal(data.animations['Still [1]'].frames.at(-1).paint,1);assert.deepEqual(data.animations['Still [1]'].events,original.animations[1].events);
  assert.deepEqual(data.animations['Still [1]'].frames[0].p['0'],[...original.animations[1].keyframes[0].jointTransforms['0'].position,...original.animations[1].keyframes[0].jointTransforms['0'].rotation]);
  assert.deepEqual(data.images.paintFrames,{'0':'paint-frame-0.png'});assert.deepEqual(readFileSync(join(out,'paint-frame-0.png')),png);assert.deepEqual(JSON.parse(readFileSync(join(out,'ImageFiles.json'),'utf8')),data.images);
+ for(const size of [32,64,128]){const small=structuredClone(original);small.texture.width=small.texture.height=size;delete small.texture.alphaMode;files['asset.json']=strToU8(JSON.stringify(small));writeFileSync(zip,zipSync(files));execFileSync('python3',[script,zip,'--out',out]);assert.ok(readFileSync(join(out,'PreparedAsset.lua'),'utf8').includes('"textureAlpha":false'));}
  original.coordinates.forward='+Z';files['asset.json']=strToU8(JSON.stringify(original));writeFileSync(zip,zipSync(files));assert.throws(()=>execFileSync('python3',[script,zip,'--out',join(directory,'bad')],{stdio:'pipe'}),/Command failed/);
  console.log('PASS importer files, generic content, preparation CLI, UV face mapping/rotation, tiny faces, unchanged transforms, duplicate/empty animations, non-loop/events, overlay zero, and coordinate rejection.');
 }finally{rmSync(directory,{recursive:true,force:true});}
