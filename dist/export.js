@@ -1,4 +1,4 @@
-import {fbxBytes} from './fbx-export.js?v=7';
+import {fbxBytes} from './fbx-export.js?v=8';
 import {robloxImportFiles} from './roblox-import-files.js?v=2';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel,TEXTURE_SIZES} from './model-ops.js';
@@ -58,7 +58,7 @@ export function projectData(state,atlas){return {format:'cube-studio',version:3,
 export const exportFilename=state=>(state.name?.trim()||'cube-asset').replace(/[<>:\"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/g,'').slice(0,80)||'cube-asset';
 const bundleGuide=`CUBER PROJECT / ASSET ZIP v2
 
-model.fbx is an optional mesh interchange copy with a bone rig, baked motion, and an embedded current-frame PNG. If the current texture layer changes the preview, fbx-atlas.png is its flattened texture; atlas.png remains the editable base. model-static.fbx combines all parts into one textured mesh in the rest pose, with no rig or animations. Both FBX files use the same atlas. For native Roblox Parts, use the bundled importer and ignore the FBX files.
+model.fbx is a mesh interchange copy with an embedded current-frame PNG. Fuse static joints is enabled by default: parts with identical relative poses throughout the bind pose and every animation are merged, while moving joints and their descendants retain their motion. A fully static asset becomes one textured mesh without bones. Disable fusion in Cuber's File tab to export the original rig. If the current texture layer changes the preview, fbx-atlas.png is its flattened texture; atlas.png remains the editable base. Fusion affects only the FBX; asset.json preserves every editable cube and Motor6D for the native Roblox Part importer. For native Roblox Parts, use the bundled importer and ignore the FBX.
 
 asset.json describes the complete rig and every animation. atlas.png is its one shared texture. Open this same ZIP in Cuber to resume editing. The editor field holds atlas placement and workspace settings; parts, joints and animations are stored only once. This is source data for a Roblox importer, not a model file to insert into Studio. No asset upload or game modification happens during export.
 
@@ -96,8 +96,7 @@ export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas)
   return zipSync({
     'asset.json':strToU8(JSON.stringify(description,null,2)),
     'atlas.png':png,
-    'model.fbx':fbxBytes(description,fbxPng,{textureFilename}),
-    'model-static.fbx':fbxBytes(description,fbxPng,{textureFilename,staticMesh:true}),
+    'model.fbx':fbxBytes(description,fbxPng,{textureFilename,fuseStaticJoints:settings.fuseStaticJoints!==false}),
     ...(separateTexture?{'fbx-atlas.png':fbxPng}:{}),
     'README.txt':strToU8(bundleGuide),
     ...Object.fromEntries(Object.entries(robloxImportFiles).map(([name,text])=>[name,strToU8(text)])),

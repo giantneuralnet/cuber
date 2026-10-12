@@ -47,7 +47,7 @@ assert.equal(data.texture.filter,'nearest');
 data.parts[0].size[0]=99;assert.equal(boxes[0].size[0],1,'description does not mutate project');
 const blob=new Blob(['test texture']);
 const bytes=await bundleBytes(state,{width:256,toBlob:cb=>cb(blob),toDataURL:()=> 'data:image/png;base64,dGVzdA=='},meshes),files=unzipSync(bytes);
-assert.deepEqual(Object.keys(files).sort(),['README.txt','ROBLOX-IMPORT.md','asset.json','atlas.png','model-static.fbx','model.fbx','roblox/CuberAnimationPlayer.client.lua','roblox/CuberImporter.lua','roblox/prepare_cuber.py']);
+assert.deepEqual(Object.keys(files).sort(),['README.txt','ROBLOX-IMPORT.md','asset.json','atlas.png','model.fbx','roblox/CuberAnimationPlayer.client.lua','roblox/CuberImporter.lua','roblox/prepare_cuber.py']);
 assert.equal(JSON.parse(strFromU8(files['asset.json'])).format,'cube-studio-asset');
 assert.equal(JSON.parse(strFromU8(files['asset.json'])).version,2);
 assert.equal(files['model.cube'],undefined,'no duplicate editable model');

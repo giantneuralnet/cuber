@@ -35,3 +35,5 @@
 @media(max-width:360px){.modes button{padding:0 8px;gap:4px;font-size:11px}.modes svg{width:16px;height:16px}.paint-tools{gap:4px}.paint-tools .tool{min-width:38px;width:38px}}
 
 #view-selector{height:132px}.view-cube-stage{bottom:50px}.view-axes{position:absolute;inset:0;width:92px;height:132px;pointer-events:none;overflow:visible}.view-axes line{stroke:currentColor;stroke-width:1.8}.view-axes text{fill:currentColor;font-size:10px;font-weight:700;text-anchor:middle;dominant-baseline:middle}.view-axes [data-axis=x]{color:#f4777e}.view-axes [data-axis=y]{color:#82dca4}.view-axes [data-axis=z]{color:#80a8ff}
+
+.export-option{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;color:#c2cfe2;font-size:14px;cursor:pointer}.export-option input{width:18px;height:18px;margin:0;accent-color:#81a7ff}

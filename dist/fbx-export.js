@@ -1,4 +1,5 @@
 import * as T from './vendor/three.module.js';
+import {fuseStaticAsset} from './fbx-fusion.js';
 
 // FBX 7.4 binary. Arrays are uncompressed so the writer needs no runtime dependencies.
 const enc=new TextEncoder(), I=v=>({type:'I',value:v}), L=v=>({type:'L',value:v}), D=v=>({type:'D',value:v});
@@ -44,9 +45,10 @@ function components(m){
 function transformProps(m){const c=components(m);return props([P('DefaultAttributeIndex','int',[I(0)]),P('Lcl Translation','Lcl Translation',vec(c.t),'A'),P('Lcl Rotation','Lcl Rotation',vec(c.r),'A'),P('Lcl Scaling','Lcl Scaling',vec([1,1,1]),'A'),P('RotationOrder','enum',[I(0)]),P('InheritType','enum',[I(1)])]);}
 
 // Accept the same already-converted geometry/rig description used by the native Part ZIP.
-export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30,staticMesh=false}={}){
+export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30,staticMesh=false,fuseStaticJoints=false}={}){
  if(!asset.parts?.length||!png?.length)throw Error('A model and PNG texture are required');
  if(!Number.isFinite(fps)||fps<1||fps>120)throw Error('Invalid FBX sample rate');
+ if(fuseStaticJoints&&!staticMesh){const fused=fuseStaticAsset(asset);asset=fused.asset;staticMesh=fused.staticMesh;}
  // Bake each part into the shared rest-space mesh, retaining face seams and UVs.
  if(staticMesh){
   const mesh={positions:[],normals:[],uvs:[],indices:[]};
