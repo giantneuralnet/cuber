@@ -1,4 +1,4 @@
-import {dimensions} from './model-ops.js?v=3';
+import {dimensions} from './model-ops.js?v=4';
 export const faceSize=(box,face)=>{const [x,y,z]=dimensions(box);return face<2?[z,y]:face<4?[x,z]:[x,y];};
 export const atlasSignature=(boxes,size,density)=>JSON.stringify([size,...(density===undefined?[]:[density]),...boxes.map(b=>[b.slot,...dimensions(b)])]);
 export function legacyLayout(boxes,size){const tile=size/32,faces={};for(const b of boxes)for(let f=0;f<6;f++){const n=b.slot*6+f;faces[n]={x:n%32*tile+tile/64,y:Math.floor(n/32)*tile+tile/64,w:tile*62/64,h:tile*62/64,spanW:tile*62/64,spanH:tile*62/64};}return {version:0,size,faces};}

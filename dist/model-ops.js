@@ -22,20 +22,25 @@ for(const child of state.boxes){if(child.parent===id){child.a=child.a.map((v,i)=
 for(const child of state.boxes){if(child.parent===null)continue;const parent=byId.get(child.parent);child.p=V(parent.p).add(V(child.a).applyQuaternion(Q(parent.q))).sub(V(child.b).applyQuaternion(Q(child.q))).toArray();}
 const rootDelta=state.boxes[0].p.map((v,i)=>v-base.boxes[0].p[i]);for(const frame of allFrames(state)){const root=frame.pose[state.boxes[0].id];root.p=root.p.map((v,i)=>v+rootDelta[i]);frame.pose=projectPose(state.boxes,frame.pose);}
 return state;}
-// Rebind only after placing the edited box. Attached children retain their
-// lateral positions; descendants follow any unavoidable parent translation.
+// Rebind the edited cube against its parent, then carry downstream joints
+// with the scaled parent faces. Child dimensions remain unchanged.
 function resizeShape(base,id,position,size){
  const state=structuredClone(base),oldById=new Map(base.boxes.map(b=>[b.id,b])),byId=new Map(state.boxes.map(b=>[b.id,b])),edited=byId.get(id);
  edited.size=size.map(v=>THREE.MathUtils.clamp(v,base.pixelDensity?Math.min(.2,1/base.pixelDensity):.2,12));edited.p=position.slice();
  for(const child of state.boxes){
   if(child.parent===null)continue;
   const old=oldById.get(child.id),parent=byId.get(child.parent),oldParent=oldById.get(child.parent),parentDelta=V(parent.p).sub(V(oldParent.p));
-  if(child.id!==id)child.p=child.parent===id?old.p.slice():V(old.p).add(parentDelta).toArray();
-  if(child.id===id||child.parent===id){
+  if(child.parent===id){
+   child.a=old.a.map((v,i)=>v*edited.size[i]/dimensions(oldParent)[i]);
+   child.p=V(parent.p).add(V(child.a).applyQuaternion(Q(parent.q))).sub(V(child.b).applyQuaternion(Q(child.q))).toArray();
+   continue;
+  }
+  if(child.id!==id)child.p=V(old.p).add(parentDelta).toArray();
+  if(child.id===id){
    const n=contactNormal(old,oldParent);
    if(n){const preferred=V(old.a).applyQuaternion(Q(oldParent.q)).add(V(oldParent.p));fitFaceAttachment(child,parent,n.toArray(),preferred.toArray());}
-   else if(child.id===id){child.b=old.b.map((v,i)=>v*edited.size[i]/dimensions(old)[i]);child.a=V(child.b).applyQuaternion(Q(child.q)).add(V(child.p)).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).toArray();}
-   else{child.a=old.a.map((v,i)=>v*edited.size[i]/dimensions(oldParent)[i]);child.p=V(parent.p).add(V(child.a).applyQuaternion(Q(parent.q))).sub(V(child.b).applyQuaternion(Q(child.q))).toArray();}
+   else{child.b=old.b.map((v,i)=>v*edited.size[i]/dimensions(old)[i]);child.a=V(child.b).applyQuaternion(Q(child.q)).add(V(child.p)).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).toArray();}
+
   }
  }
  const rootDelta=state.boxes[0].p.map((v,i)=>v-base.boxes[0].p[i]);for(const frame of allFrames(state)){const root=frame.pose[state.boxes[0].id];root.p=root.p.map((v,i)=>v+rootDelta[i]);frame.pose=projectPose(state.boxes,frame.pose);}
@@ -57,5 +62,5 @@ export function connectedPose(boxes,pose){const byId=new Map(boxes.map(b=>[b.id,
 
 export const allFrames=state=>state.animations?state.animations.flatMap(a=>a.frames):state.frames||[];
 export const activeFrames=state=>state.animations?state.animations[state.animation||0].frames:state.frames||[];
-export function animationMirrorPairs(boxes,id,axes){let top=boxes.find(b=>b.id===id);if(!top)return [];const byId=new Map(boxes.map(b=>[b.id,b]));for(let parent=byId.get(top.parent);parent&&parent.parent!==null;parent=byId.get(parent.parent))if(mirrorPartners(boxes,parent.id,axes).length)top=parent;const sources=new Set([top.id]);for(const b of boxes)if(sources.has(b.parent))sources.add(b.id);const pairs=[],targets=new Set();for(const b of boxes)if(sources.has(b.id))for(const partner of mirrorPartners(boxes,b.id,axes))if(!sources.has(partner.id)&&!targets.has(partner.id)&&!byId.get(partner.id).anchor){pairs.push({source:b.id,target:partner.id,signs:partner.signs});targets.add(partner.id);}return pairs;}
+export function animationMirrorPairs(boxes,id,axes){let top=boxes.find(b=>b.id===id);if(!top)return [];const byId=new Map(boxes.map(b=>[b.id,b]));const sources=new Set([top.id]);for(const b of boxes)if(sources.has(b.parent))sources.add(b.id);const pairs=[],targets=new Set();for(const b of boxes)if(sources.has(b.id))for(const partner of mirrorPartners(boxes,b.id,axes))if(!sources.has(partner.id)&&!targets.has(partner.id)&&!byId.get(partner.id).anchor){pairs.push({source:b.id,target:partner.id,signs:partner.signs});targets.add(partner.id);}return pairs;}
 export function mirrorAnimationPose(boxes,pose,pairs){if(!pairs.length)return pose;const out=structuredClone(pose),byId=new Map(boxes.map(b=>[b.id,b])),root=boxes[0],rq=Q(pose[root.id].q),restRoot=Q(root.q);for(const {source,target,signs} of pairs){const s=byId.get(source),t=byId.get(target),bind=restRoot.clone().invert().multiply(Q(s.q)),delta=rq.clone().invert().multiply(Q(pose[source].q)).multiply(bind.invert()),det=signs[0]*signs[1]*signs[2];delta.set(delta.x*det*signs[0],delta.y*det*signs[1],delta.z*det*signs[2],delta.w);out[target].q=rq.clone().multiply(delta).multiply(restRoot.clone().invert().multiply(Q(t.q))).normalize().toArray();}return projectPose(boxes,out);}

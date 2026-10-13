@@ -1,8 +1,8 @@
 import {AUTO_ATLAS_SIZES,PIXEL_SNAPS} from './pixel-settings.js';
 import {fbxBytes} from './fbx-export.js?v=8';
 import * as THREE from './vendor/three.module.js';
-import {dimensions,normalizeModel} from './model-ops.js?v=3';
-import {validateLayout,legacyLayout} from './atlas-layout.js?v=2';
+import {dimensions,normalizeModel} from './model-ops.js?v=4';
+import {validateLayout,legacyLayout} from './atlas-layout.js?v=3';
 import {projectFileData} from './asset-project.js?v=4';
 import {validatePaintLayer} from './paint-layer.js';
 import {textureUpscales} from './texture-upscale.js?v=2';

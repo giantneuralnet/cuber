@@ -1,5 +1,5 @@
 import * as T from './vendor/three.module.js';
-import {allFrames,projectPose,snap} from './model-ops.js?v=3';
+import {allFrames,projectPose,snap} from './model-ops.js?v=4';
 const V=a=>new T.Vector3(...a),Q=a=>new T.Quaternion(...a);
 // Snap centers in world coordinates and rebind each joint at the midpoint of
 // its translated endpoints. Preserve dimensions, rotations and animation bends.

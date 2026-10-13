@@ -1,5 +1,5 @@
 import * as T from './vendor/three.module.js';
-import {dimensions,contactNormal,steppedValue} from './model-ops.js?v=3';
+import {dimensions,contactNormal,steppedValue} from './model-ops.js?v=4';
 const V=a=>new T.Vector3(...a),Q=a=>new T.Quaternion(...a);
 export const FACE_HANDLES=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
 export function centeredPlacement(parent,normal){
