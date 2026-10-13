@@ -68,9 +68,9 @@ export async function projectFileData(file){
   let total=0,count=0;const names=new Set();
   const files=unzipSync(bytes,{filter:entry=>{
     total+=entry.originalSize;
-    // 16 overlay frames plus base/preview at nine sizes can exceed 160 entries.
-    if(++count>192||total>64*1024*1024)throw Error('Project ZIP is too large');
-    if(!['asset.json','atlas.png','model.cube'].includes(entry.name)&&!/^paint-layer\/frame-\d+\.png$/.test(entry.name))return false;
+    // Color plus two material channels, overlay sources and upscales.
+    if(++count>512||total>64*1024*1024)throw Error('Project ZIP is too large');
+    if(!['asset.json','atlas.png','model.cube'].includes(entry.name)&&!/^paint-layer\/frame-\d+(?:-(?:emission|metalness))?\.png$/.test(entry.name)&&!/^paint-material\/base-(?:emission|metalness)\.png$/.test(entry.name))return false;
     if(names.has(entry.name))fail();names.add(entry.name);return true;
   }});
   if(!files['asset.json'])fail();
@@ -85,12 +85,19 @@ export async function projectFileData(file){
     let binary='';for(let i=0;i<png.length;i+=8192)binary+=String.fromCharCode(...png.subarray(i,i+8192));
     return 'data:image/png;base64,'+btoa(binary);
   }
+  if(asset.materials!==undefined){
+    if(asset.materials?.version!==1||!asset.materials.channels||typeof asset.materials.channels!=='object')fail();
+    state.materialMaps={};for(const [name,info] of Object.entries(asset.materials.channels)){
+      if(!['emission','metalness'].includes(name)||!info||info.source!==null&&info.source!==`paint-material/base-${name}.png`)fail();
+      if(info.source)state.materialMaps[name]=pngURL(files[info.source]);
+    }
+  }
   if(asset.paintLayer!==undefined){
     const layer=asset.paintLayer;
     if(layer.version!==1||!Array.isArray(layer.frames)||!layer.frames.length||layer.frames.length>16)fail();
     state.paintLayer={frame:asset.editor.paintFrame??0,frames:layer.frames.map(f=>{
       if(f.file!==null&&(typeof f.file!=='string'||!/^paint-layer\/frame-\d+\.png$/.test(f.file)))fail();
-      return {png:f.file===null?'':pngURL(files[f.file])};
+      const extra={};for(const [name,path] of Object.entries(f.materialSources||{})){if(!['emission','metalness'].includes(name)||typeof path!=='string'||!new RegExp('^paint-layer/frame-[0-9]+-'+name+'\\.png$').test(path))fail();extra[name]=pngURL(files[path]);}return {png:f.file===null?'':pngURL(files[f.file]),...extra};
     })};
   }
   return {format:'cube-studio',version:3,state,atlas:pngURL(files['atlas.png']),editor:asset.editor.settings};

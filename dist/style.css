@@ -43,3 +43,6 @@
 .atlas-resolution{font-size:13px;color:var(--muted);white-space:nowrap;margin-right:auto}
 
 .brush-setting{display:flex;flex-direction:column;flex:1;min-width:0;gap:0;color:#9baac0;font-size:10px}.paint-tools .brush-setting input{width:100%;min-width:0;max-width:none;margin:0}.paint-tools .spacer{display:none}
+
+#mirror-tools #paint-advanced{margin-left:0}.material-setting{display:flex;align-items:center;gap:12px;padding:10px 12px;min-height:48px;color:#c2cfe2;font-size:14px}.material-setting>span{width:72px;flex-shrink:0}.material-setting input{flex:1;width:0;min-width:40px;margin:0}.material-setting output{width:42px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
+@media(max-width:380px){#mirror-tools:has(#paint-advanced:not([hidden])){gap:5px}#mirror-tools:has(#paint-advanced:not([hidden])) .axis-button{min-width:36px}#mirror-tools:has(#paint-advanced:not([hidden]))>span{font-size:12px;padding-left:0}}
