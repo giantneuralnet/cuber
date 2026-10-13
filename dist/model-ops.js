@@ -1,3 +1,4 @@
+import {fitFaceAttachment} from './face-attachment.js';
 import {migratePixelSettings} from './pixel-settings.js';
 import * as THREE from './vendor/three.module.js';
 const V=a=>new THREE.Vector3().fromArray(a), Q=a=>new THREE.Quaternion().fromArray(a);
@@ -16,11 +17,30 @@ export function contactNormal(b,parent){const n=normalFor(b,parent),i=n.toArray(
 export function constrainedRelative(b,parent,relative){if(!b.axis||b.axis==='omni')return relative.clone();const bind=Q(parent.q).invert().multiply(Q(b.q)),delta=relative.clone().multiply(bind.clone().invert()),axis=axisVector(b.axis);const d=delta.x*axis.x+delta.y*axis.y+delta.z*axis.z;const twist=new THREE.Quaternion(axis.x*d,axis.y*d,axis.z*d,delta.w);if(twist.lengthSq()<1e-10)twist.identity();else twist.normalize();return twist.multiply(bind);}
 export function projectPose(boxes,pose,{constrain=true}={}){const out={},byId=new Map(boxes.map(b=>[b.id,b]));for(const b of boxes){const source=pose[b.id]||b;if(b.parent===null){out[b.id]={p:source.p.slice(),q:source.q.slice()};continue;}const parent=byId.get(b.parent),oldParent=pose[b.parent]||parent,pp=out[b.parent];let relative=Q(oldParent.q).invert().multiply(Q(source.q));if(constrain)relative=constrainedRelative(b,parent,relative);const q=Q(pp.q).multiply(relative).normalize(),p=V(pp.p).add(V(b.a).applyQuaternion(Q(pp.q))).sub(V(b.b).applyQuaternion(q));out[b.id]={p:p.toArray(),q:q.toArray()};}return out;}
 // Apply a rest-shape edit from a fixed drag-start snapshot, preserving joint rotations in every frame.
-export function editShape(base,id,newPosition,newSize){const state=structuredClone(base),b=state.boxes.find(b=>b.id===id),old=base.boxes.find(b=>b.id===id);b.size=newSize.map(v=>THREE.MathUtils.clamp(v,base.pixelDensity?Math.min(.2,1/base.pixelDensity):.2,12));b.p=newPosition.slice();const byId=new Map(state.boxes.map(b=>[b.id,b]));if(b.parent!==null){const parent=byId.get(b.parent),n=contactNormal(old,parent);b.b=old.b.map((v,k)=>v*b.size[k]/dimensions(old)[k]);const a=V(b.p).add(V(b.b).applyQuaternion(Q(b.q))).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert());if(n){const i=n.toArray().findIndex(v=>Math.abs(v)>.5),ps=dimensions(parent);b.normal=n.toArray();for(let k=0;k<3;k++)a.setComponent(k,k===i?old.a[i]:THREE.MathUtils.clamp(a.getComponent(k),-ps[k]/2,ps[k]/2));}b.a=a.toArray();}
+export function editShape(base,id,newPosition,newSize){if(newSize.some((v,i)=>Math.abs(v-dimensions(base.boxes.find(b=>b.id===id))[i])>1e-9))return resizeShape(base,id,newPosition,newSize);const state=structuredClone(base),b=state.boxes.find(b=>b.id===id),old=base.boxes.find(b=>b.id===id);b.size=newSize.map(v=>THREE.MathUtils.clamp(v,base.pixelDensity?Math.min(.2,1/base.pixelDensity):.2,12));b.p=newPosition.slice();const byId=new Map(state.boxes.map(b=>[b.id,b]));if(b.parent!==null){const parent=byId.get(b.parent),n=contactNormal(old,parent);b.b=old.b.map((v,k)=>v*b.size[k]/dimensions(old)[k]);const a=V(b.p).add(V(b.b).applyQuaternion(Q(b.q))).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert());if(n){const i=n.toArray().findIndex(v=>Math.abs(v)>.5),ps=dimensions(parent);b.normal=n.toArray();for(let k=0;k<3;k++)a.setComponent(k,k===i?old.a[i]:THREE.MathUtils.clamp(a.getComponent(k),-ps[k]/2,ps[k]/2));}b.a=a.toArray();}
 for(const child of state.boxes){if(child.parent===id){child.a=child.a.map((v,i)=>v*b.size[i]/dimensions(old)[i]);}}
 for(const child of state.boxes){if(child.parent===null)continue;const parent=byId.get(child.parent);child.p=V(parent.p).add(V(child.a).applyQuaternion(Q(parent.q))).sub(V(child.b).applyQuaternion(Q(child.q))).toArray();}
 const rootDelta=state.boxes[0].p.map((v,i)=>v-base.boxes[0].p[i]);for(const frame of allFrames(state)){const root=frame.pose[state.boxes[0].id];root.p=root.p.map((v,i)=>v+rootDelta[i]);frame.pose=projectPose(state.boxes,frame.pose);}
 return state;}
+// Rebind only after placing the edited box. Attached children retain their
+// lateral positions; descendants follow any unavoidable parent translation.
+function resizeShape(base,id,position,size){
+ const state=structuredClone(base),oldById=new Map(base.boxes.map(b=>[b.id,b])),byId=new Map(state.boxes.map(b=>[b.id,b])),edited=byId.get(id);
+ edited.size=size.map(v=>THREE.MathUtils.clamp(v,base.pixelDensity?Math.min(.2,1/base.pixelDensity):.2,12));edited.p=position.slice();
+ for(const child of state.boxes){
+  if(child.parent===null)continue;
+  const old=oldById.get(child.id),parent=byId.get(child.parent),oldParent=oldById.get(child.parent),parentDelta=V(parent.p).sub(V(oldParent.p));
+  if(child.id!==id)child.p=child.parent===id?old.p.slice():V(old.p).add(parentDelta).toArray();
+  if(child.id===id||child.parent===id){
+   const n=contactNormal(old,oldParent);
+   if(n){const preferred=V(old.a).applyQuaternion(Q(oldParent.q)).add(V(oldParent.p));fitFaceAttachment(child,parent,n.toArray(),preferred.toArray());}
+   else if(child.id===id){child.b=old.b.map((v,i)=>v*edited.size[i]/dimensions(old)[i]);child.a=V(child.b).applyQuaternion(Q(child.q)).add(V(child.p)).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).toArray();}
+   else{child.a=old.a.map((v,i)=>v*edited.size[i]/dimensions(oldParent)[i]);child.p=V(parent.p).add(V(child.a).applyQuaternion(Q(parent.q))).sub(V(child.b).applyQuaternion(Q(child.q))).toArray();}
+  }
+ }
+ const rootDelta=state.boxes[0].p.map((v,i)=>v-base.boxes[0].p[i]);for(const frame of allFrames(state)){const root=frame.pose[state.boxes[0].id];root.p=root.p.map((v,i)=>v+rootDelta[i]);frame.pose=projectPose(state.boxes,frame.pose);}
+ return state;
+}
 export function mirroredSamples(point,normal,origin,rotation,axes){const inverse=rotation.clone().invert(),p=point.clone().sub(origin).applyQuaternion(inverse),n=normal.clone().applyQuaternion(inverse);let samples=[{p,n}];for(const axis of ['x','y','z'])if(axes[axis]){const index='xyz'.indexOf(axis);samples=samples.concat(samples.map(s=>({p:s.p.clone().setComponent(index,-s.p.getComponent(index)),n:s.n.clone().setComponent(index,-s.n.getComponent(index))})));}return samples.map(s=>({point:s.p.applyQuaternion(rotation).add(origin),normal:s.n.applyQuaternion(rotation)}));}
 export function pastePose(boxes,current,clipboard){const pose=structuredClone(current);for(const b of boxes)if(clipboard[b.id])pose[b.id]=structuredClone(clipboard[b.id]);return projectPose(boxes,pose);}
 export function mirrorSigns(axes){let signs=[[1,1,1]];for(let i=0;i<3;i++)if(axes['xyz'[i]])signs=signs.concat(signs.map(s=>s.map((v,k)=>k===i?-v:v)));return signs;}

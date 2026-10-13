@@ -13,12 +13,22 @@ export function createPaintMaterials(texture,{checker=false}={}){
  translucent.customProgramCacheKey=()=> 'cuber-partial-alpha-v1';
  if(checker){
   // Display only: the source/composited PNGs and FBX keep their real alpha.
-  const size=new THREE.Vector2(texture.image.width,texture.image.height);opaque.userData.checkerSize=size;
+  const size=new THREE.Vector2(texture.image.width,texture.image.height);opaque.userData.checkerSize=size;const preview={value:false};opaque.userData.resizePreview=preview;
   opaque.onBeforeCompile=shader=>{
-   shader.uniforms.cuberTextureSize={value:size};
-   shader.fragmentShader='uniform vec2 cuberTextureSize;\n'+shader.fragmentShader;
-   shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
-    vec2 pixel = floor(vMapUv * cuberTextureSize);
+   shader.uniforms.cuberTextureSize={value:size};shader.uniforms.cuberResizePreview=preview;
+   shader.vertexShader='attribute vec2 cuberFaceUV; attribute vec4 cuberFaceRect; attribute vec2 cuberFaceSpan; varying vec2 faceUV; varying vec4 faceRect; varying vec2 faceSpan;\n'+shader.vertexShader;
+   shader.vertexShader=shader.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\nfaceUV=cuberFaceUV;faceRect=cuberFaceRect;faceSpan=cuberFaceSpan;');
+   shader.fragmentShader='uniform vec2 cuberTextureSize; uniform bool cuberResizePreview; varying vec2 faceUV; varying vec4 faceRect; varying vec2 faceSpan;\n'+shader.fragmentShader;
+   shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`vec2 pixel = min(floor(faceUV * faceSpan), max(vec2(0.0), ceil(faceSpan - 0.00001) - 1.0));
+    if(cuberResizePreview){
+      vec2 extent = max(vec2(1.0), ceil(faceSpan - 0.00001));
+      vec2 oldPixel = floor((pixel + 0.5) * faceRect.zw / extent);
+      vec2 sampleUV = (faceRect.xy + oldPixel + 0.5) / cuberTextureSize;
+      sampleUV.y = 1.0 - sampleUV.y;
+      diffuseColor *= texture2D(map, sampleUV);
+    }else{
+      #include <map_fragment>
+    }
     float square = mod(pixel.x + pixel.y, 2.0);
     vec3 checkerColor = mix(vec3(0.085), vec3(0.15), square);
     diffuseColor.rgb = mix(checkerColor, diffuseColor.rgb, diffuseColor.a);
