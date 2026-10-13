@@ -19,3 +19,5 @@ const preview=editMirroredShape(shapePreviewBase(base),0,args.position,args.size
 assert.deepEqual(editMirroredJoint(shapePreviewBase(base),1,[.2,1,0],{}).boxes,editMirroredJoint(base,1,[.2,1,0],{}).boxes);
 assert.ok(connectedSelection(child,0));assert.ok(connectedSelection(child,1));assert.ok(!connectedSelection({id:3,parent:2},1));assert.ok(connectedSelection(child,null));
 console.log('PASS: six face handles, inherited centered placement, self-mirror XYZ and rotated roots, lightweight previews match committed edits, selected joint visibility.');
+
+const fresh=centeredPlacement(root,[1,0,0],[1,1,1]);assert.deepEqual(fresh.size,[1,1,1]);assert.deepEqual(fresh.position,[1.5,.5,0]);assert.deepEqual(fresh.a,[1,0,0]);assert.ok(new T.Vector3(...fresh.b).distanceTo(new T.Vector3(-.5,0,0))<1e-9);

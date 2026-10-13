@@ -7,7 +7,7 @@ export function validatePaintLayer(layer){
 }
 export function appendPaintFrame(layer){if(layer.frames.length>=16)return false;layer.frames.push({png:layer.frames[layer.frame].png});layer.frame=layer.frames.length-1;return true;}
 export function deletePaintFrame(layer,animations=[]){if(layer.frames.length<2)return false;const removed=layer.frame;layer.frames.splice(removed,1);layer.frame=Math.max(0,removed-1);for(const a of animations)for(const frame of a.frames){const selected=frame.paintFrame??0;frame.paintFrame=selected>removed?selected-1:selected===removed?Math.min(removed,layer.frames.length-1):selected;}return true;}
-export const paintFrameForPose=(frame,layer)=>Math.max(0,Math.min(layer.frames.length-1,frame?.paintFrame??0));
+export const paintFrameForPose=(frame,layer)=>Math.max(-1,Math.min(layer.frames.length-1,frame?.paintFrame??0));
 const canvas=size=>{const c=document.createElement('canvas');c.width=c.height=size;c.getContext('2d',{willReadFrequently:true});return c;};
 
 // The base and overlay remain independently editable. Only the preview is composited.
@@ -21,10 +21,10 @@ export class PaintLayerSurface {
  touch(){this.sync();this.dirty=true;}
  flush(){if(!this.dirty)return;const png=this.edit.toDataURL('image/png'),copy=canvas(this.edit.width);copy.getContext('2d').drawImage(this.edit,0,0);this.cache.set(png,copy);this.getLayer().frames[this.getLayer().frame].png=png;this.active=png+'|'+this.base.width;this.dirty=false;}
  prune(){const keep=new Set(this.getLayer().frames.map(f=>f.png));for(const key of this.cache.keys())if(!keep.has(key))this.cache.delete(key);}
- compose(index=this.getLayer().frame){
+ compose(index=this.getLayer().frame,preview=null,target=null){
   this.sync();const size=this.base.width;if(this.composite.width!==size)this.composite.width=this.composite.height=size;
-  const ctx=this.composite.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,size,size);ctx.drawImage(this.base,0,0);
-  const layer=this.getLayer(),source=index===layer.frame?this.edit:this.source(layer.frames[index].png);if(source)ctx.drawImage(source,0,0,size,size);this.lastPreview=index;
+  const ctx=this.composite.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,size,size);ctx.drawImage(target==='base'&&preview?preview:this.base,0,0);
+  const layer=this.getLayer(),source=index<0?null:target==='layer'&&preview?preview:index===layer.frame?this.edit:this.source(layer.frames[index].png);if(source)ctx.drawImage(source,0,0,size,size);this.lastPreview=index;
  }
  remap(png,boxes,layout,oldLayout){
   if(!png)return '';if(layout.signature===oldLayout?.signature)return png;

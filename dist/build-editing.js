@@ -3,8 +3,8 @@ import * as T from './vendor/three.module.js';
 import {dimensions,contactNormal} from './model-ops.js?v=5';
 const V=a=>new T.Vector3(...a),Q=a=>new T.Quaternion(...a);
 export const FACE_HANDLES=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
-export function centeredPlacement(parent,normal){
- const size=dimensions(parent).slice(),n=V(normal),a=n.clone().multiply(V(size)).multiplyScalar(.5),b=a.clone().negate();
+export function centeredPlacement(parent,normal,size=dimensions(parent).slice()){
+ const n=V(normal),a=n.clone().multiply(V(dimensions(parent))).multiplyScalar(.5),b=n.clone().multiply(V(size)).multiplyScalar(-.5);
  return {size,a:a.toArray(),b:b.toArray(),position:a.clone().sub(b).applyQuaternion(Q(parent.q)).add(V(parent.p)).toArray()};
 }
 // Resize one face. Cubes centered on an enabled mirror plane grow equally on

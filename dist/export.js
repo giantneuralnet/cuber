@@ -1,10 +1,10 @@
-import {AUTO_ATLAS_SIZES,PIXEL_SNAPS} from './pixel-settings.js';
+import {AUTO_ATLAS_SIZES,PIXEL_SNAPS} from './pixel-settings.js?v=2';
 import {fbxBytes} from './fbx-export.js?v=8';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel} from './model-ops.js?v=5';
 import {validateLayout,legacyLayout} from './atlas-layout.js?v=3';
 import {projectFileData} from './asset-project.js?v=4';
-import {validatePaintLayer} from './paint-layer.js';
+import {validatePaintLayer} from './paint-layer.js?v=8';
 import {textureUpscales} from './texture-upscale.js?v=2';
 import {zipSync,strToU8} from './vendor/fflate.js';
 
@@ -60,7 +60,7 @@ export const exportFilename=state=>(state.name?.trim()||'cube-asset').replace(/[
 export const fbxFilename=state=>exportFilename(state).replace(/\s+/g,'_')+'.fbx';
 export function textureEventData(description){
  if(!description.paintLayer?.frames.some(f=>f.file))return null;
- return {version:1,marker:'CuberTexture',timeUnit:'seconds',baseTexture:'atlas.png',blend:'source-over',frames:description.paintLayer.frames.map((f,i)=>({value:String(i),overlay:f.file})),animations:description.animations.filter(a=>a.keyframes.length).map(a=>{
+ return {version:1,marker:'CuberTexture',timeUnit:'seconds',baseTexture:'atlas.png',blend:'source-over',frames:[...(description.animations.some(a=>a.keyframes.some(f=>f.paintFrame===-1))?[{value:'-1',overlay:null}]:[]),...description.paintLayer.frames.map((f,i)=>({value:String(i),overlay:f.file}))],animations:description.animations.filter(a=>a.keyframes.length).map(a=>{
   let previous;const events=[];
   for(const f of a.keyframes){const value=String(f.paintFrame??0);if(value!==previous)events.push({time:f.time,value});previous=value;}
   return {id:a.id,name:a.name,initialValue:events[0].value,events};
@@ -76,7 +76,7 @@ Publish the imported clips as Roblox Animation assets and play them with Animato
 Open this ZIP in Cuber to resume editing. asset.json, atlas.png and any paint-layer PNGs preserve the original editable cubes.
 ${hasPaint?`
 TEXTURE EVENTS
-texture-events.json lists CuberTexture marker times and string values for each animation. Values are zero-based paint frame numbers; a null overlay means the base texture alone. These are import instructions, not markers automatically embedded into Roblox by FBX.
+texture-events.json lists CuberTexture marker times and string values for each animation. Values are zero-based overlay frame indices (0 is UI overlay 1); -1 selects Base; a null overlay means the base texture alone. These are import instructions, not markers automatically embedded into Roblox by FBX.
 Before publishing each animation, add matching Roblox KeyframeMarkers (Name = CuberTexture, Value = the listed value) at the listed times. Keep motion playback in Animator. Your script listens with AnimationTrack:GetMarkerReachedSignal("CuberTexture") and switches to the matching texture. Initialize initialValue on playback start and loop restart.
 With the standard MeshPart texture, composite each used overlay over atlas.png and upload each resulting atlas once, then swap TextureID (or SurfaceAppearance ColorMap). If your renderer already supports a separate overlay, switch that overlay image instead. Texture-only static models have no FBX motion track to attach markers to.
 `:''}`;}
@@ -110,4 +110,4 @@ if(s.pixelDensity!==undefined&&(!Number.isFinite(s.pixelDensity)||s.pixelDensity
 if(s.name!==undefined&&(typeof s.name!=='string'||s.name.length>80))fail();
 if(!Number.isInteger(s.nextId)||s.nextId<=Math.max(...ids))fail();
 const animations=data.version<3?[{id:0,name:'Animation 1',frames:s.frames}]:s.animations;if(!Array.isArray(animations)||!animations.length||animations.length>16)fail();const animationIds=new Set();for(const animation of animations){if(!Number.isInteger(animation.id)||animation.id<0||animationIds.has(animation.id)||typeof animation.name!=='string'||animation.name.length>80||!Array.isArray(animation.frames)||animation.frames.length>60)fail();animationIds.add(animation.id);let prev=-1;for(const f of animation.frames){if(typeof f.time!=='number'||!Number.isFinite(f.time)||f.time<0||f.time>60||f.time<=prev||!f.pose)fail();for(const b of s.boxes)if(!f.pose[b.id]||!validArray(f.pose[b.id].p,3)||!validQ(f.pose[b.id].q))fail();prev=f.time;}if(animation.frames.length&&animation.frames[0].time!==0)fail();}const active=data.version<3?0:s.animation;if(!Number.isInteger(active)||active<0||active>=animations.length||!Number.isInteger(s.frame)||s.frame<0||s.frame>=Math.max(1,animations[active].frames.length))fail();
-if(typeof data.atlas!=='string'||!data.atlas.startsWith('data:image/png;base64,')||data.atlas.length>24*1024*1024)fail();const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('Invalid paint texture'));image.src=data.atlas;});if(!AUTO_ATLAS_SIZES.includes(image.width)||image.height!==image.width||(s.textureSize!==undefined&&s.textureSize!==image.width))fail();if(s.atlasLayout!==undefined&&!validateLayout(s.atlasLayout,s.boxes,image.width))fail();const layerImages=[];if(s.paintLayer!==undefined){if(!validatePaintLayer(s.paintLayer))fail();for(const frame of s.paintLayer.frames){if(!frame.png){layerImages.push(null);continue;}const overlay=new Image();await new Promise((resolve,reject)=>{overlay.onload=resolve;overlay.onerror=()=>reject(Error('Invalid paint layer texture'));overlay.src=frame.png;});if(overlay.width!==image.width||overlay.height!==image.height)fail();layerImages.push(overlay);}}for(const animation of animations)for(const frame of animation.frames)if(frame.paintFrame!==undefined&&(!Number.isInteger(frame.paintFrame)||frame.paintFrame<0||frame.paintFrame>=(s.paintLayer?.frames.length||1)))fail();s.textureSize=Math.min(image.width,s.pixelDensity?4096:1024);return {state:normalizeModel(s),image,layerImages,editor:data.editor};}
+if(typeof data.atlas!=='string'||!data.atlas.startsWith('data:image/png;base64,')||data.atlas.length>24*1024*1024)fail();const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(Error('Invalid paint texture'));image.src=data.atlas;});if(!AUTO_ATLAS_SIZES.includes(image.width)||image.height!==image.width||(s.textureSize!==undefined&&s.textureSize!==image.width))fail();if(s.atlasLayout!==undefined&&!validateLayout(s.atlasLayout,s.boxes,image.width))fail();const layerImages=[];if(s.paintLayer!==undefined){if(!validatePaintLayer(s.paintLayer))fail();for(const frame of s.paintLayer.frames){if(!frame.png){layerImages.push(null);continue;}const overlay=new Image();await new Promise((resolve,reject)=>{overlay.onload=resolve;overlay.onerror=()=>reject(Error('Invalid paint layer texture'));overlay.src=frame.png;});if(overlay.width!==image.width||overlay.height!==image.height)fail();layerImages.push(overlay);}}for(const animation of animations)for(const frame of animation.frames)if(frame.paintFrame!==undefined&&(!Number.isInteger(frame.paintFrame)||frame.paintFrame< -1||frame.paintFrame>=(s.paintLayer?.frames.length||1)))fail();s.textureSize=Math.min(image.width,s.pixelDensity?4096:1024);return {state:normalizeModel(s),image,layerImages,editor:data.editor};}

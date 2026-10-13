@@ -32,3 +32,6 @@ tap.tap('top',10,10,1000);tap.tap('top',11,12,1150);
 assert.equal(recenters,1);assert.equal(pending,null);assert.deepEqual(selected,['front','top']);
 tap.tap('right',10,10,2000);tap.cancel();assert.equal(pending,null);
 console.log('PASS: independent texture frames, limits, deletion reference repair, legacy defaults, and single/double/drag view-cube gestures.');
+
+assert.equal(paintFrameForPose({paintFrame:-1},layer),-1,'Base is distinct from overlay frame 1');
+const baseAnimation=[{frames:[{paintFrame:-1},{paintFrame:0}]}];layer.frame=0;deletePaintFrame(layer,baseAnimation);assert.equal(baseAnimation[0].frames[0].paintFrame,-1);

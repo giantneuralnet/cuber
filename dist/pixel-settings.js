@@ -1,4 +1,4 @@
-export const FACE_PIXELS=[8,16,32,64];
+export const FACE_PIXELS=[4,8,16,32,64];
 export const PIXEL_SNAPS=[0,1,2,4,8,16,32];
 export const AUTO_ATLAS_SIZES=[4,8,16,32,64,128,256,512,1024,2048,4096];
 export function migratePixelSettings(state){

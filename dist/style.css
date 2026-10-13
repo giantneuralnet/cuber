@@ -41,3 +41,5 @@
 .pixel-controls{display:flex;flex-basis:100%;gap:12px}.pixel-controls .grid-control{flex:1;min-width:0;flex-direction:column;align-items:stretch;gap:5px;padding:0}.pixel-controls select{width:100%}
 
 .atlas-resolution{font-size:13px;color:var(--muted);white-space:nowrap;margin-right:auto}
+
+.brush-setting{display:flex;flex-direction:column;flex:1;min-width:0;gap:0;color:#9baac0;font-size:10px}.paint-tools .brush-setting input{width:100%;min-width:0;max-width:none;margin:0}.paint-tools .spacer{display:none}

@@ -1,6 +1,6 @@
 import {snapOnPlane} from './world-grid.js';
 import {fitFaceAttachment} from './face-attachment.js?v=2';
-import {migratePixelSettings} from './pixel-settings.js';
+import {migratePixelSettings} from './pixel-settings.js?v=2';
 import * as THREE from './vendor/three.module.js';
 const V=a=>new THREE.Vector3().fromArray(a), Q=a=>new THREE.Quaternion().fromArray(a);
 export const dimensions=b=>b.size||[1,1,1];
