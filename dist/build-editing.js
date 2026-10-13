@@ -1,6 +1,6 @@
 import {snapAlongLine} from './world-grid.js';
 import * as T from './vendor/three.module.js';
-import {dimensions,contactNormal} from './model-ops.js?v=5';
+import {dimensions,contactNormal,normalFor} from './model-ops.js?v=5';
 const V=a=>new T.Vector3(...a),Q=a=>new T.Quaternion(...a);
 export const FACE_HANDLES=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
 export function centeredPlacement(parent,normal,size=dimensions(parent).slice()){
@@ -26,3 +26,9 @@ export const connectedSelection=(box,selected)=>selected===null||box.id===select
 // Edge-on planes have a nearly singular screen projection. Ignore their
 // unobservable direction instead of dividing by a near-zero ray/plane angle.
 export function planeDragDelta(dx,dy,u,v){const uu=u.x*u.x+u.y*u.y,vv=v.x*v.x+v.y*v.y,uv=u.x*v.x+u.y*v.y,du=dx*u.x+dy*u.y,dv=dx*v.x+dy*v.y,det=uu*vv-uv*uv;if(det>Math.max(uu*vv*.02,1)&&Math.min(uu,vv)>4)return [(du*vv-dv*uv)/det,(dv*uu-du*uv)/det];return uu>=vv?(uu>4?[du/uu,0]:[0,0]):(vv>4?[0,dv/vv]:[0,0]);}
+
+export function parentFaceSign(box,parent){
+ if(!parent)return null;
+ const n=normalFor(box,parent).applyQuaternion(Q(parent.q)).applyQuaternion(Q(box.q).invert()).negate().toArray(),axis=n.reduce((best,v,i)=>Math.abs(v)>Math.abs(n[best])?i:best,0);
+ return [0,1,2].map(i=>i===axis?Math.sign(n[i]):0);
+}
