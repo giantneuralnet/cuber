@@ -60,7 +60,7 @@ export function encodeTexturePNG({width,height,pixels,colorChunks=[]}){
  return join([signature,chunk('IHDR',header),...colorChunks,chunk('IDAT',zlibSync(raw,{level:6})),chunk('IEND',new Uint8Array())]);
 }
 export function textureUpscales(files,sourceSize){
- const sizes=[64,128,256,512,1024].filter(size=>size>sourceSize),out={};
+ const sizes=[8,16,32,64,128,256,512,1024].filter(size=>size>sourceSize),out={};
  if(!sizes.length)return out;
  for(const [name,png] of Object.entries(files)){
   const image=decodeTexturePNG(png);

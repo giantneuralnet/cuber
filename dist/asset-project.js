@@ -57,7 +57,7 @@ export function stateFromAsset(asset){
     })};
   });
   return {name:asset.name,boxes,animations,textureSize:asset.texture.width,nextId:editor.nextId,
-    nextAnimationId:editor.nextAnimationId,animation:editor.animation,frame:editor.frame,gridSize:editor.gridSize,
+    nextAnimationId:editor.nextAnimationId,animation:editor.animation,frame:editor.frame,gridSize:editor.gridSize,...(editor.pixelDensity?{pixelDensity:editor.pixelDensity,snapPixels:editor.snapPixels}:{}),
     ...(editor.atlasLayout?.version===0?{}:{atlasLayout:editor.atlasLayout})};
 }
 
@@ -68,8 +68,8 @@ export async function projectFileData(file){
   let total=0,count=0;const names=new Set();
   const files=unzipSync(bytes,{filter:entry=>{
     total+=entry.originalSize;
-    // 16 overlay frames plus base/preview at six sizes can exceed 100 entries.
-    if(++count>160||total>64*1024*1024)throw Error('Project ZIP is too large');
+    // 16 overlay frames plus base/preview at nine sizes can exceed 160 entries.
+    if(++count>192||total>64*1024*1024)throw Error('Project ZIP is too large');
     if(!['asset.json','atlas.png','model.cube'].includes(entry.name)&&!/^paint-layer\/frame-\d+\.png$/.test(entry.name))return false;
     if(names.has(entry.name))fail();names.add(entry.name);return true;
   }});

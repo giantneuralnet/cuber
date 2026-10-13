@@ -1,4 +1,4 @@
-import {repackPixels} from './atlas-layout.js';
+import {repackPixels} from './atlas-layout.js?v=2';
 
 export const freshPaintLayer=()=>({frame:0,frames:[{png:''}]});
 export function validatePaintLayer(layer){

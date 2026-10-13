@@ -37,3 +37,5 @@
 #view-selector{height:132px}.view-cube-stage{bottom:50px}.view-axes{position:absolute;inset:0;width:92px;height:132px;pointer-events:none;overflow:visible}.view-axes line{stroke:currentColor;stroke-width:1.8}.view-axes text{fill:currentColor;font-size:10px;font-weight:700;text-anchor:middle;dominant-baseline:middle}.view-axes [data-axis=x]{color:#f4777e}.view-axes [data-axis=y]{color:#82dca4}.view-axes [data-axis=z]{color:#80a8ff}
 
 .export-option{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;color:#c2cfe2;font-size:14px;cursor:pointer}.export-option input{width:18px;height:18px;margin:0;accent-color:#81a7ff}
+
+.pixel-controls{display:flex;flex-basis:100%;gap:12px}.pixel-controls .grid-control{flex:1;min-width:0;flex-direction:column;align-items:stretch;gap:5px;padding:0}.pixel-controls select{width:100%}
