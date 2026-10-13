@@ -1,18 +1,14 @@
 import * as T from './vendor/three.module.js';
-import {allFrames,projectPose,snap} from './model-ops.js?v=4';
+import {allFrames,snap} from './model-ops.js?v=5';
 const V=a=>new T.Vector3(...a),Q=a=>new T.Quaternion(...a);
-// Snap centers in world coordinates and rebind each joint at the midpoint of
-// its translated endpoints. Preserve dimensions, rotations and animation bends.
+// A snap-setting change is a rigid translation of the connected model. Rounding
+// each center independently opens gaps for dimensions that do not divide the
+// new step. Keep every existing contact, gap, dimension and animated pose intact.
 export function snapProjectToGrid(base,step){
- const state=structuredClone(base);state.gridSize=step;if(!step)return state;
- const old=new Map(base.boxes.map(b=>[b.id,b])),byId=new Map(state.boxes.map(b=>[b.id,b]));
- for(const b of state.boxes)b.p=b.p.map(v=>snap(v,step));
- for(const b of state.boxes){if(b.parent===null)continue;const p=byId.get(b.parent);
-  const a=V(b.a).applyQuaternion(Q(p.q)).add(V(p.p)),c=V(b.b).applyQuaternion(Q(b.q)).add(V(b.p)),joint=a.add(c).multiplyScalar(.5);
-  b.a=joint.clone().sub(V(p.p)).applyQuaternion(Q(p.q).invert()).toArray();b.b=joint.sub(V(b.p)).applyQuaternion(Q(b.q).invert()).toArray();
- }
- const root=state.boxes.find(b=>b.parent===null),delta=V(root.p).sub(V(old.get(root.id).p));
- for(const f of allFrames(state)){f.pose[root.id].p=V(f.pose[root.id].p).add(delta).toArray();f.pose=projectPose(state.boxes,f.pose);}
+ const state=structuredClone(base);state.gridSize=step;if(!step||!state.boxes.length)return state;
+ const root=state.boxes.find(b=>b.parent===null)||state.boxes[0],delta=root.p.map(v=>snap(v,step)-v);
+ for(const b of state.boxes)b.p=b.p.map((v,i)=>v+delta[i]);
+ for(const f of allFrames(state))for(const pose of Object.values(f.pose))pose.p=pose.p.map((v,i)=>v+delta[i]);
  return state;
 }
 export function explodedOffsets(boxes,gap=.4){

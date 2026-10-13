@@ -2,18 +2,18 @@ import {FACE_PIXELS,PIXEL_SNAPS,migratePixelSettings} from './pixel-settings.js'
 import {createPaintMaterials} from './paint-material.js?v=3';
 import * as THREE from 'three';
 import * as CANNON from './vendor/cannon-es.js';
-import {faceSize,packPixelAtlas,facePixelBounds,atlasSignature,legacyLayout,repackPixels,padFace,stampPixelBrush} from './atlas-layout.js?v=3';
-import {FACE_HANDLES,planeDragDelta,centeredPlacement,faceResize,shapePreviewBase,connectedSelection} from './build-editing.js?v=4';
+import {faceSize,packPixelAtlas,facePixelBounds,atlasSignature,legacyLayout,repackPixels,padFace,stampPixelBrush} from './atlas-layout.js?v=4';
+import {FACE_HANDLES,planeDragDelta,centeredPlacement,faceResize,shapePreviewBase,connectedSelection} from './build-editing.js?v=5';
 import {icon} from './icons.js?v=2';
 import {PaintLayerSurface,freshPaintLayer,appendPaintFrame,deletePaintFrame,paintFrameForPose} from './paint-layer.js';
-import {snapProjectToGrid,explodedOffsets,visibleBrushTexels} from './editor-geometry.js?v=3';
+import {snapProjectToGrid,explodedOffsets,visibleBrushTexels} from './editor-geometry.js?v=4';
 import {createViewCube} from './view-cube.js?v=5';
-import {animationDragIds,createRigPhysics,stepRigPhysics} from './rig-physics.js?v=3';
+import {animationDragIds,createRigPhysics,stepRigPhysics} from './rig-physics.js?v=4';
 import {LocalProjectAutosave} from './local-project.js';
 import {createTextureView} from './texture-view.js?v=4';
 import {bindPointerInput} from './pointer-input.js';
-import {allFrames,activeFrames,animationMirrorPairs,mirrorAnimationPose,steppedValue,slidePosition,editMirroredJoint,dimensions,axisVector,normalizeModel,normalFor,constrainedRelative,projectPose,editShape,mirroredSamples,pastePose,mirrorPartners,editMirroredShape} from './model-ops.js?v=4';
-import {downloadBundle,readProject,projectData,triggerDownload} from './export.js?v=19';
+import {allFrames,activeFrames,animationMirrorPairs,mirrorAnimationPose,slidePosition,editMirroredJoint,dimensions,axisVector,normalizeModel,normalFor,constrainedRelative,projectPose,editShape,mirroredSamples,pastePose,mirrorPartners,editMirroredShape} from './model-ops.js?v=5';
+import {downloadBundle,readProject,projectData,triggerDownload} from './export.js?v=20';
 const $=s=>document.querySelector(s), clamp=THREE.MathUtils.clamp;
 const MAX=128;let SIZE=64,activeLayout=null;
 let palette=['#f4f7fc','#263342','#3264ee','#e75946','#ffbb4a','#83bf81','#b8a2e6'];
@@ -36,7 +36,7 @@ const canvas=renderer.domElement;canvas.setAttribute('aria-label','3D canvas. Ta
 const scene=new THREE.Scene();
 let camera=new THREE.PerspectiveCamera(36,innerWidth/innerHeight,.05,150);const target=new THREE.Vector3(0,.5,0);let radius=Math.max(5.7,4/camera.aspect),theta=.72,phi=1.05;
 const hemi=new THREE.HemisphereLight(0xffffff,0x98a9c0,2.4);scene.add(hemi);const light=new THREE.DirectionalLight(0xffffff,2.4);light.position.set(4,7,5);scene.add(light);
-let grid=null,gridStep=null;function updateGrid(){if(gridStep===state.gridSize)return;gridStep=state.gridSize;if(grid){scene.remove(grid);grid.geometry.dispose();grid.material.dispose();grid=null;}if(gridStep){grid=new THREE.GridHelper(20,Math.round(20/gridStep),0x465061,0x343d4c);grid.position.y=-.012;grid.material.transparent=true;grid.material.opacity=.32;scene.add(grid);}}
+let grid=null,gridStep=null;function updateGrid(){if(gridStep===state.gridSize)return;gridStep=state.gridSize;if(grid){scene.remove(grid);grid.geometry.dispose();grid.material.dispose();grid=null;}if(gridStep){const halfCells=Math.ceil(10/gridStep);grid=new THREE.GridHelper(2*halfCells*gridStep,2*halfCells,0x465061,0x343d4c);grid.position.y=-.012;grid.material.transparent=true;grid.material.opacity=.32;scene.add(grid);}}
 const floor=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshBasicMaterial({color:0x14171d,transparent:true,opacity:0,depthWrite:false}));floor.rotation.x=-Math.PI/2;floor.position.y=-.02;scene.add(floor);
 const group=new THREE.Group();scene.add(group);const meshes=new Map();
 const edgeGeometry=new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1));const edgeMaterial=new THREE.LineBasicMaterial({color:0x7890ac,transparent:true,opacity:.3});const outline=new THREE.LineSegments(edgeGeometry,new THREE.LineBasicMaterial({color:0x3264ee}));outline.scale.setScalar(1.003);outline.material.depthTest=false;outline.material.transparent=true;outline.material.opacity=.85;outline.renderOrder=10;outline.visible=false;scene.add(outline);

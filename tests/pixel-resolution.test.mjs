@@ -17,8 +17,8 @@ for(const density of FACE_PIXELS){
   const state=normalizeModel({pixelDensity:density,snapPixels:pixels,boxes:[cube(),cube(1)],frames:[]});
   assert.equal(state.gridSize,pixels/density);assert.equal(shapePreviewBase(state).pixelDensity,density);
   const slide=slidePosition(state,1,[.163,1.5,.127])[0],joint=editJoint(state,1,[.163,1,.127]).boxes[1].a[0];
-  const resized=faceResize(state,0,[1,0,0],.321,{}).size[0]-1;
-  for(const v of [slide,joint,resized])if(pixels)assert.ok(Math.abs(v/state.gridSize-Math.round(v/state.gridSize))<1e-8);
+  const resize=faceResize(state,0,[1,0,0],.321,{}),resized=resize.size[0]-1,face=resize.position[0]+resize.size[0]/2;
+  for(const v of [slide,joint,face])if(pixels)assert.ok(Math.abs(v/state.gridSize-Math.round(v/state.gridSize))<1e-8);
   if(!pixels){assert.equal(slide,.163);assert.equal(joint,.163);assert.ok(Math.abs(resized-.321)<1e-8);}
  }
  const state=normalizeModel({pixelDensity:density,snapPixels:1,boxes:[cube()],frames:[]});

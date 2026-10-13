@@ -1,4 +1,5 @@
-import {fitFaceAttachment} from './face-attachment.js';
+import {snapOnPlane} from './world-grid.js';
+import {fitFaceAttachment} from './face-attachment.js?v=2';
 import {migratePixelSettings} from './pixel-settings.js';
 import * as THREE from './vendor/three.module.js';
 const V=a=>new THREE.Vector3().fromArray(a), Q=a=>new THREE.Quaternion().fromArray(a);
@@ -32,13 +33,21 @@ function resizeShape(base,id,position,size){
   const old=oldById.get(child.id),parent=byId.get(child.parent),oldParent=oldById.get(child.parent),parentDelta=V(parent.p).sub(V(oldParent.p));
   if(child.parent===id){
    child.a=old.a.map((v,i)=>v*edited.size[i]/dimensions(oldParent)[i]);
+   const normal=contactNormal(old,oldParent);
+   if(normal){
+    const axis=normal.toArray().findIndex(v=>Math.abs(v)>.5),tangents=[0,1,2].filter(i=>i!==axis),world=a=>V(a).applyQuaternion(Q(parent.q)).add(V(parent.p)),poly=[[-1,-1],[1,-1],[1,1],[-1,1]].map(sign=>{const a=child.a.slice();tangents.forEach((k,i)=>a[k]=sign[i]*dimensions(parent)[k]/2);return world(a);});
+    child.a=snapOnPlane(world(child.a),normal.clone().applyQuaternion(Q(parent.q)),base.gridSize,poly).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).toArray();
+   }else{
+    const world=V(child.a).applyQuaternion(Q(parent.q)).add(V(parent.p)),normal=normalFor(old,oldParent).applyQuaternion(Q(parent.q));
+    child.a=snapOnPlane(world,normal,base.gridSize).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).toArray();
+   }
    child.p=V(parent.p).add(V(child.a).applyQuaternion(Q(parent.q))).sub(V(child.b).applyQuaternion(Q(child.q))).toArray();
    continue;
   }
   if(child.id!==id)child.p=V(old.p).add(parentDelta).toArray();
   if(child.id===id){
    const n=contactNormal(old,oldParent);
-   if(n){const preferred=V(old.a).applyQuaternion(Q(oldParent.q)).add(V(oldParent.p));fitFaceAttachment(child,parent,n.toArray(),preferred.toArray());}
+   if(n){const preferred=V(old.a).applyQuaternion(Q(oldParent.q)).add(V(oldParent.p));fitFaceAttachment(child,parent,n.toArray(),preferred.toArray(),base.gridSize);}
    else{child.b=old.b.map((v,i)=>v*edited.size[i]/dimensions(old)[i]);child.a=V(child.b).applyQuaternion(Q(child.q)).add(V(child.p)).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).toArray();}
 
   }
@@ -53,9 +62,25 @@ export function reflectPoint(point,origin,rotation,signs){return point.clone().s
 export function mirrorPartners(boxes,id,axes){const source=boxes.find(b=>b.id===id),root=boxes[0];if(!source||source.parent===null)return [];const partners=[],used=new Set([id]);for(const signs of mirrorSigns(axes).slice(1)){const p=reflectPoint(V(source.p),V(root.p),Q(root.q),signs);const match=boxes.find(b=>!used.has(b.id)&&V(b.p).distanceTo(p)<.015&&dimensions(b).every((v,i)=>Math.abs(v-dimensions(source)[i])<.015));if(match){used.add(match.id);partners.push({id:match.id,signs});}}return partners;}
 export function editMirroredShape(base,id,position,size,axes){let result=editShape(base,id,position,size);const root=base.boxes[0],source=result.boxes.find(b=>b.id===id),editedPosition=V(source.p),editedSize=dimensions(source);for(const partner of mirrorPartners(base.boxes,id,axes)){const p=reflectPoint(editedPosition,V(root.p),Q(root.q),partner.signs);result=editShape(result,partner.id,p.toArray(),editedSize);}return result;}
 // Move a block in whole edit steps along the parent's face, including at its edges.
-export function slidePosition(base,id,desired){const b=base.boxes.find(b=>b.id===id),parent=base.boxes.find(p=>p.id===b.parent);if(!parent)return b.p.map((v,i)=>i===1?v:steppedValue(desired[i],v,-Infinity,Infinity,base.gridSize??EDIT_STEP));const q=Q(parent.q),inverse=q.clone().invert(),delta=V(desired).sub(V(b.p)).applyQuaternion(inverse),n=normalFor(b,parent),contact=contactNormal(b,parent),a=V(b.a);for(let i=0;i<3;i++)if(Math.abs(n.getComponent(i))<.5)a.setComponent(i,steppedValue(a.getComponent(i)+delta.getComponent(i),b.a[i],contact?-dimensions(parent)[i]/2:-Infinity,contact?dimensions(parent)[i]/2:Infinity,base.gridSize??EDIT_STEP));return V(b.p).add(a.sub(V(b.a)).applyQuaternion(q)).toArray();}
-// Move both ends of a joint together inside the overlap of the two contacting faces.
-export function editJoint(base,id,worldPoint){const state=structuredClone(base),b=state.boxes.find(b=>b.id===id),parent=state.boxes.find(p=>p.id===b.parent);if(!parent)return state;const pq=Q(parent.q),cq=Q(b.q),desired=V(worldPoint).sub(V(parent.p)).applyQuaternion(pq.clone().invert()),a=V(b.a),n=normalFor(b,parent);if(!contactNormal(b,parent)){for(let i=0;i<3;i++)if(Math.abs(n.getComponent(i))<.5)a.setComponent(i,steppedValue(desired.getComponent(i),a.getComponent(i),-Infinity,Infinity,base.gridSize??EDIT_STEP));b.a=a.toArray();b.b=a.clone().applyQuaternion(pq).add(V(parent.p)).sub(V(b.p)).applyQuaternion(cq.clone().invert()).toArray();for(const f of allFrames(state))f.pose=projectPose(state.boxes,f.pose);return state;}for(let i=0;i<3;i++){if(Math.abs(n.getComponent(i))>.5)continue;const childLocal=a.clone().applyQuaternion(pq).add(V(parent.p)).sub(V(b.p)).applyQuaternion(cq.clone().invert()),direction=new THREE.Vector3().setComponent(i,1).applyQuaternion(pq).applyQuaternion(cq.clone().invert());let low=-dimensions(parent)[i]/2-a.getComponent(i),high=dimensions(parent)[i]/2-a.getComponent(i);for(let j=0;j<3;j++){const d=direction.getComponent(j);if(Math.abs(d)<1e-8)continue;const left=(-dimensions(b)[j]/2-childLocal.getComponent(j))/d,right=(dimensions(b)[j]/2-childLocal.getComponent(j))/d;low=Math.max(low,Math.min(left,right));high=Math.min(high,Math.max(left,right));}if(low<=high+1e-8)a.setComponent(i,steppedValue(desired.getComponent(i),a.getComponent(i),a.getComponent(i)+low,a.getComponent(i)+high,base.gridSize??EDIT_STEP));}b.a=a.toArray();b.b=a.clone().applyQuaternion(pq).add(V(parent.p)).sub(V(b.p)).applyQuaternion(cq.clone().invert()).toArray();for(const f of allFrames(state))f.pose=projectPose(state.boxes,f.pose);return state;}
+export function slidePosition(base,id,desired){
+ const b=base.boxes.find(b=>b.id===id),parent=base.boxes.find(p=>p.id===b.parent),step=base.gridSize??EDIT_STEP;
+ if(!parent)return b.p.map((v,i)=>i===1?v:snap(desired[i],step));
+ const q=Q(parent.q),inverse=q.clone().invert(),n=normalFor(b,parent),axis=n.toArray().findIndex(v=>Math.abs(v)>.5),contact=contactNormal(b,parent),a=V(b.a),target=V(desired).sub(V(b.p)).applyQuaternion(inverse).add(a),tangents=[0,1,2].filter(i=>i!==axis);
+ target.setComponent(axis,a.getComponent(axis));if(contact)for(const i of tangents)target.setComponent(i,THREE.MathUtils.clamp(target.getComponent(i),-dimensions(parent)[i]/2,dimensions(parent)[i]/2));
+ const center=point=>point.sub(a).applyQuaternion(q).add(V(b.p)),poly=contact?[[-1,-1],[1,-1],[1,1],[-1,1]].map(sign=>{const point=a.clone();tangents.forEach((k,i)=>point.setComponent(k,sign[i]*dimensions(parent)[k]/2));return center(point);}):null;
+ return snapOnPlane(center(target),n.applyQuaternion(q),step,poly).toArray();
+}
+// Move both endpoints together on the global grid inside their face overlap.
+export function editJoint(base,id,worldPoint){
+ const state=structuredClone(base),b=state.boxes.find(b=>b.id===id),parent=state.boxes.find(p=>p.id===b.parent);if(!parent)return state;
+ const pq=Q(parent.q),cq=Q(b.q),normal=contactNormal(b,parent),step=base.gridSize??EDIT_STEP;
+ if(normal)fitFaceAttachment(b,parent,normal.toArray(),worldPoint,step);
+ else{
+  const n=normalFor(b,parent).applyQuaternion(pq),old=V(b.a).applyQuaternion(pq).add(V(parent.p)),point=V(worldPoint);point.addScaledVector(n,n.dot(old.clone().sub(point)));
+  const joint=snapOnPlane(point,n,step);b.a=joint.clone().sub(V(parent.p)).applyQuaternion(pq.invert()).toArray();b.b=joint.sub(V(b.p)).applyQuaternion(cq.invert()).toArray();
+ }
+ for(const f of allFrames(state))f.pose=projectPose(state.boxes,f.pose);return state;
+}
 export function editMirroredJoint(base,id,worldPoint,axes){let state=editJoint(base,id,worldPoint);const b=state.boxes.find(b=>b.id===id),parent=state.boxes.find(p=>p.id===b.parent),root=base.boxes[0],point=V(b.a).applyQuaternion(Q(parent.q)).add(V(parent.p));for(const partner of mirrorPartners(base.boxes,id,axes))state=editJoint(state,partner.id,reflectPoint(point,V(root.p),Q(root.q),partner.signs).toArray());return state;}
 // Resolve solver stretch before rendering, traversing from an anchor so it stays fixed.
 export function connectedPose(boxes,pose){const byId=new Map(boxes.map(b=>[b.id,b])),links=new Map(boxes.map(b=>[b.id,[]]));for(const b of boxes)if(b.parent!==null){links.get(b.parent).push(b.id);links.get(b.id).push(b.parent);}const root=boxes.find(b=>b.anchor)||boxes[0],out={[root.id]:structuredClone(pose[root.id]||root)},queue=[root.id];for(let k=0;k<queue.length;k++){const id=queue[k],current=out[id];for(const next of links.get(id)){if(out[next])continue;const backwards=byId.get(id).parent===next,child=byId.get(backwards?id:next),parent=byId.get(child.parent),rawParent=pose[parent.id]||parent,rawChild=pose[child.id]||child;const relative=constrainedRelative(child,parent,Q(rawParent.q).invert().multiply(Q(rawChild.q)));let q,p;if(backwards){q=Q(current.q).multiply(relative.invert());p=V(current.p).add(V(child.b).applyQuaternion(Q(current.q))).sub(V(child.a).applyQuaternion(q));}else{q=Q(current.q).multiply(relative);p=V(current.p).add(V(child.a).applyQuaternion(Q(current.q))).sub(V(child.b).applyQuaternion(q));}out[next]={p:p.toArray(),q:q.normalize().toArray()};queue.push(next);}}return out;}
