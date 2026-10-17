@@ -28,7 +28,7 @@ for(const setting of [false,true]){
   const actual=new Map(),expectedParts=new Map();
   for(const bone of data.bones){const j=joints.get(bone.id),expected=(expectedParts.get(j.parentPartId)?.clone()??mat(rig.rigRoot.restTransform)).multiply(mat(j.c0)).multiply(mat(rig.animations[ai].keyframes[fi].jointTransforms[bone.id]));
    expectedParts.set(bone.id,expected.clone().multiply(mat(j.c1).invert()));
-   const reconstructed=(actual.get(bone.parent)?.clone()??new T.Matrix4()).multiply(bone.restLocal).multiply(f.poses[bone.id]);actual.set(bone.id,reconstructed);near(reconstructed,expected);
+   const reconstructed=(actual.get(bone.parent)?.clone()??new T.Matrix4()).multiply(bone.restLocal).multiply(f.poses[bone.id]);actual.set(bone.id,reconstructed);const basis=new T.Matrix4().makeScale(-1,1,-1);near(reconstructed,basis.clone().multiply(expected).multiply(basis));
   }
  }
 }

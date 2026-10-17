@@ -1,4 +1,4 @@
-import {robloxAnimationFiles,animationPriority} from './roblox-animation-export.js';
+import {robloxAnimationFiles,animationPriority} from './roblox-animation-export.js?v=2';
 import {materialDescription,materialFiles,materialFrameFiles,materialChannels} from './material-export.js';
 import {AUTO_ATLAS_SIZES,PIXEL_SNAPS} from './pixel-settings.js?v=2';
 import {fbxBytes} from './fbx-export.js?v=9';
@@ -74,7 +74,7 @@ function bundleGuide(main,texture,hasPaint,hasUpscales,hasMaterials){return `CUB
 Import ${main} into Roblox Studio as a mesh model. It contains the rig, animation clips and shared texture. ${texture} is included as a texture fallback. Keep the exported orientation and scale.
 ${hasUpscales?'\ntextures/<size>/ contains nearest-neighbor PNG upscales through 1024px, including overlays. To use a larger texture, upload the matching PNG from that folder; UVs stay unchanged. Originals remain at the ZIP root for editing.\n':''}
 
-roblox animations/ has a .rbxmx KeyframeSequence per clip with matching FBX bones, timing, Loop, Priority and texture markers. Insert them into a Studio folder. Defaults: Loop=true, Priority=Action. To match imported MeshPart containers, paste BindToRig.luau into a ModuleScript and run require(module)(rig, sequencesFolder) once before publishing. Keep import scale unchanged. Static fused models have no bones.
+roblox animations/ has a .rbxmx KeyframeSequence per clip with matching FBX bones, timing, Loop, Priority and texture markers. Insert them into a Studio folder. Defaults: Loop=true, Priority=Action. To match imported MeshPart containers, paste BindToRig.luau into a ModuleScript and run require(module)(rig, sequencesFolder) once before publishing. The helper matches uniform rig scale using rest-bone spacing. Static fused models have no bones.
 
 Publish these KeyframeSequences as Roblox Animation assets and play them with Animator:LoadAnimation() and AnimationTrack. No custom animation player is needed. Fuse static joints merges rigid sections across every clip; fully static models have no bones or motion tracks.
 
