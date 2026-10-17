@@ -1,3 +1,4 @@
+import {fbxPartName,fbxBoneName} from './rig-names.js';
 import * as T from './vendor/three.module.js';
 import {fuseStaticAsset} from './fbx-fusion.js';
 
@@ -10,7 +11,7 @@ const P=(name,type,values,flags='')=>N('P',[name,type,subtypes[type]??'',flags,.
 const classes={AnimationStack:'AnimStack',AnimationLayer:'AnimLayer',AnimationCurveNode:'AnimCurveNode',AnimationCurve:'AnimCurve'};
 const props=children=>N('Properties70',[],children), named=(name,kind)=>`${name}\0\x01${kind}`;
 const time=t=>Math.round(t*46186158000), matrix=t=>new T.Matrix4().compose(new T.Vector3(...t.position),new T.Quaternion(...t.rotation),new T.Vector3(1,1,1));
-const vec=v=>v.map(D), idName=p=>`${p.name}_${p.id}`;
+const vec=v=>v.map(D), idName=fbxPartName;
 function property(p){
  if(typeof p==='string')p={type:'S',value:enc.encode(p)};
  const {type,value}=p, array='dfil'.includes(type),raw=type==='S'||type==='R';
@@ -72,8 +73,8 @@ export function fbxBytes(asset,png,{textureFilename='atlas.png',fps=30,staticMes
   const x=ids.get(part.id),name=staticMesh?part.name:idName(part);
   if(!staticMesh){
   const joint=joints.get(part.id),parent=ids.get(joint.parentPartId),local=(parent?parent.boneWorld.clone().invert():identity.clone()).multiply(x.boneWorld);
-  add('Model',x.bone,`Joint_${name}`,'LimbNode',[N('Version',[I(232)]),transformProps(local),N('Shading',[I(1)]),N('Culling',['CullingOff'])]);link(x.bone,parent?.bone??rig);
-  add('NodeAttribute',x.attr,`Joint_${name}`,'LimbNode',[N('TypeFlags',['Skeleton']),props([P('Size','double',[D(.2)])])]);link(x.attr,x.bone);
+  add('Model',x.bone,fbxBoneName(part),'LimbNode',[N('Version',[I(232)]),transformProps(local),N('Shading',[I(1)]),N('Culling',['CullingOff'])]);link(x.bone,parent?.bone??rig);
+  add('NodeAttribute',x.attr,fbxBoneName(part),'LimbNode',[N('TypeFlags',['Skeleton']),props([P('Size','double',[D(.2)])])]);link(x.attr,x.bone);
   }
   add('Model',x.mesh,name,'Mesh',[N('Version',[I(232)]),transformProps(identity),N('Shading',[I(1)]),N('Culling',['CullingOff'])]);link(x.mesh,rig);link(mat,x.mesh);
   const mesh=part.mesh,vertices=mesh.positions.flatMap(p=>new T.Vector3(...p).applyMatrix4(x.world).toArray());

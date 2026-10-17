@@ -46,7 +46,7 @@ export function stateFromAsset(asset){
   }
   const animations=asset.animations.map(animation=>{
     if(!Array.isArray(animation.keyframes)||animation.keyframes.length>60)fail();
-    return {id:animation.id,name:animation.name,frames:animation.keyframes.map(frame=>{
+    return {id:animation.id,name:animation.name,...(animation.loop!==undefined?{loop:animation.loop}:{}),...(animation.priority!==undefined?{priority:animation.priority}:{}),frames:animation.keyframes.map(frame=>{
       const world=new Map(),pose={};
       for(const box of boxes){
         const joint=joints.get(box.id),parent=box.parent===null?root:world.get(box.parent);

@@ -1,10 +1,11 @@
+import {robloxAnimationFiles,animationPriority} from './roblox-animation-export.js';
 import {materialDescription,materialFiles,materialFrameFiles,materialChannels} from './material-export.js';
 import {AUTO_ATLAS_SIZES,PIXEL_SNAPS} from './pixel-settings.js?v=2';
-import {fbxBytes} from './fbx-export.js?v=8';
+import {fbxBytes} from './fbx-export.js?v=9';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel} from './model-ops.js?v=5';
 import {validateLayout,legacyLayout} from './atlas-layout.js?v=3';
-import {projectFileData} from './asset-project.js?v=5';
+import {projectFileData} from './asset-project.js?v=6';
 import {validatePaintLayer,validMaterialPNG} from './paint-layer.js?v=9';
 import {textureUpscales} from './texture-upscale.js?v=2';
 import {zipSync,strToU8} from './vendor/fflate.js';
@@ -50,7 +51,7 @@ export function assetDescription(state,meshes,textureSize=state.textureSize,sett
       const {c0,c1}=binds.get(b.id),axis=b.parent===null?'omni':b.axis||'omni';
       return {id:b.id,name:`Joint_${b.id}`,parentPartId:b.parent,childPartId:b.id,type:'Motor6D',c0:transform(c0),c1:transform(c1),authoringConstraint:{axis,axisSpace:'parent-part-local',axisVector:axis==='omni'?null:vector(...['x','y','z'].map(a=>a===axis?1:0))}};
     }),
-    animations:animations.map((a,index)=>({id:a.id??index,name:a.name,loop:true,interpolation:'linear-time-quaternion-slerp',keyframes:a.frames.map(f=>({time:f.time,paintFrame:f.paintFrame??0,jointTransforms:Object.fromEntries(state.boxes.map(b=>{
+    animations:animations.map((a,index)=>({id:a.id??index,name:a.name,loop:a.loop!==false,priority:animationPriority(a),interpolation:'linear-time-quaternion-slerp',keyframes:a.frames.map(f=>({time:f.time,paintFrame:f.paintFrame??0,jointTransforms:Object.fromEntries(state.boxes.map(b=>{
       const {c0,c1}=binds.get(b.id),parent=b.parent===null?rootFrame:matrix(f.pose[b.parent]||byId.get(b.parent));
       return [b.id,transform(c0.clone().invert().multiply(parent.clone().invert()).multiply(matrix(f.pose[b.id]||b)).multiply(c1))];
     }))}))}))
@@ -73,7 +74,9 @@ function bundleGuide(main,texture,hasPaint,hasUpscales,hasMaterials){return `CUB
 Import ${main} into Roblox Studio as a mesh model. It contains the rig, animation clips and shared texture. ${texture} is included as a texture fallback. Keep the exported orientation and scale.
 ${hasUpscales?'\ntextures/<size>/ contains nearest-neighbor PNG upscales through 1024px, including overlays. To use a larger texture, upload the matching PNG from that folder; UVs stay unchanged. Originals remain at the ZIP root for editing.\n':''}
 
-Publish the imported clips as Roblox Animation assets and play them with Animator:LoadAnimation() and AnimationTrack. No custom animation player is needed. Fuse static joints merges rigid sections across every clip; fully static models have no bones or motion tracks.
+roblox animations/ has a .rbxmx KeyframeSequence per clip with matching FBX bones, timing, Loop, Priority and texture markers. Insert them into a Studio folder. Defaults: Loop=true, Priority=Action. To match imported MeshPart containers, paste BindToRig.luau into a ModuleScript and run require(module)(rig, sequencesFolder) once before publishing. Keep import scale unchanged. Static fused models have no bones.
+
+Publish these KeyframeSequences as Roblox Animation assets and play them with Animator:LoadAnimation() and AnimationTrack. No custom animation player is needed. Fuse static joints merges rigid sections across every clip; fully static models have no bones or motion tracks.
 
 Open this ZIP in Cuber to resume editing. asset.json, atlas.png and any paint-layer PNGs preserve the original editable cubes.
 ${hasMaterials?`
@@ -83,8 +86,8 @@ The materials/ folder contains ready-to-upload composited masks for overlay fram
 `:''}
 ${hasPaint?`
 TEXTURE EVENTS
-texture-events.json lists CuberTexture marker times and string values for each animation. Values are zero-based overlay frame indices (0 is UI overlay 1); -1 selects Base; a null overlay means the base texture alone. These are import instructions, not markers automatically embedded into Roblox by FBX.
-Before publishing each animation, add matching Roblox KeyframeMarkers (Name = CuberTexture, Value = the listed value) at the listed times. Keep motion playback in Animator. Your script listens with AnimationTrack:GetMarkerReachedSignal("CuberTexture") and switches to the matching texture. Initialize initialValue on playback start and loop restart.
+texture-events.json lists CuberTexture marker times and string values for each animation. Values are zero-based overlay frame indices (0 is UI overlay 1); -1 selects Base; a null overlay means the base texture alone. Markers are embedded in .rbxmx, not FBX.
+Publish the KeyframeSequence to retain markers. For FBX clips, add the listed markers manually. Keep motion playback in Animator. Your script listens with AnimationTrack:GetMarkerReachedSignal("CuberTexture") and switches to the matching texture. Initialize initialValue on playback start and loop restart.
 With the standard MeshPart texture, composite each used overlay over atlas.png and upload each resulting atlas once, then swap TextureID (or SurfaceAppearance ColorMap). If your renderer already supports a separate overlay, switch that overlay image instead. Texture-only static models have no FBX motion track to attach markers to.
 `:''}`;}
 export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas){
@@ -106,6 +109,7 @@ export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas)
   return zipSync({
     'asset.json':strToU8(JSON.stringify(description,null,2)),
     ...textures,...upscales,...masks.sources,
+    ...robloxAnimationFiles(description,{fuseStaticJoints:settings.fuseStaticJoints!==false},events),
     [main]:fbxBytes(description,fbxPng,{textureFilename,fuseStaticJoints:settings.fuseStaticJoints!==false}),
     'README.txt':strToU8(bundleGuide(main,textureFilename,!!events,Object.keys(upscales).length>0,!!description.materials)),
     ...(events?{'texture-events.json':strToU8(JSON.stringify(events,null,2))}:{})

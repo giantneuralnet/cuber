@@ -39,13 +39,13 @@ for(const [i,axis] of ['x','y','z'].entries()){
 }
 const rest=Object.fromEntries(boxes.map(b=>[b.id,{p:b.p,q:b.q}])),moved=structuredClone(rest);
 moved[0].p=[3,4,-2];moved[2].q=new T.Quaternion().setFromEuler(new T.Euler(.6,.4,.1)).toArray();
-const state={name:'Round trip',boxes,nextId:12,textureSize:256,gridSize:.05,atlasLayout:packAtlas(boxes,256),animations:[{id:2,name:'Motion',frames:[{time:0,pose:rest},{time:.5,pose:projectPose(boxes,moved)}]},{id:7,name:'Empty',frames:[]}],nextAnimationId:12,animation:0,frame:1};
+const state={name:'Round trip',boxes,nextId:12,textureSize:256,gridSize:.05,atlasLayout:packAtlas(boxes,256),animations:[{id:2,name:'Motion',loop:false,priority:'Movement',frames:[{time:0,pose:rest},{time:.5,pose:projectPose(boxes,moved)}]},{id:7,name:'Empty',frames:[]}],nextAnimationId:12,animation:0,frame:1};
 const settings={mode:'paint',tool:'fill',color:'#123456',palette:['#123456','#ffffff','#000000','#aaaaaa','#bbbbbb','#cccccc','#dddddd'],brush:13,mirrors:{x:true,y:false,z:true},textureView:true,exploded:true,showJoints:false};
 const png=Buffer.from(encodeTexturePNG({width:256,height:256,pixels:new Uint8Array(256*256*4)}));
 const atlas={width:256,toBlob:cb=>cb(new Blob([png])),toDataURL:()=>`data:image/png;base64,${png.toString('base64')}`};
 const meshes=meshMap(state),bytes=await bundleBytes(state,atlas,meshes,settings),files=unzipSync(bytes),loaded=await readProject(new Blob([bytes]));
-assert.deepEqual(Object.keys(files).sort(),['README.txt','Round_trip.fbx','asset.json','atlas.png','textures/1024/atlas.png','textures/512/atlas.png']);
-sameState(state,loaded.state);assert.deepEqual(loaded.editor,settings);assert.deepEqual(Buffer.from(files['atlas.png']),png);
+assert.deepEqual(Object.keys(files).sort(),['README.txt','Round_trip.fbx','asset.json','atlas.png','roblox animations/BindToRig.luau','roblox animations/Empty.rbxmx','roblox animations/Motion.rbxmx','textures/1024/atlas.png','textures/512/atlas.png']);
+sameState(state,loaded.state);assert.equal(loaded.state.animations[0].loop,false);assert.equal(loaded.state.animations[0].priority,'Movement');assert.deepEqual(loaded.editor,settings);assert.deepEqual(Buffer.from(files['atlas.png']),png);
 const savedAgain=await readProject(new Blob([await bundleBytes(loaded.state,atlas,meshMap(loaded.state),loaded.editor)]));sameState(state,savedAgain.state);
 const legacy=projectData(state,atlas);sameState(state,(await readProject(new Blob([JSON.stringify(legacy)]))).state);
 const oldZip=zipSync({'asset.json':strToU8(JSON.stringify({format:'cube-studio-asset',version:1})),'model.cube':strToU8(JSON.stringify(legacy))});sameState(state,(await readProject(new Blob([oldZip]))).state);
