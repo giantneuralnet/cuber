@@ -1,0 +1,91 @@
+import {snapOnPlane} from './world-grid.js';
+import {fitFaceAttachment} from './face-attachment.js?v=2';
+import {migratePixelSettings} from './pixel-settings.js?v=2';
+import * as THREE from './vendor/three.module.js';
+const V=a=>new THREE.Vector3().fromArray(a), Q=a=>new THREE.Quaternion().fromArray(a);
+export const dimensions=b=>b.size||[1,1,1];
+export const EDIT_STEP=.05;
+export const TEXTURE_SIZES=[32,64,128,256,512,1024];
+export const GRID_SIZES=[0,.05,.1,.2,.25];
+export const snap=(value,step=EDIT_STEP)=>step?Math.round(value/step)*step:value;
+export function steppedValue(value,origin,min=-Infinity,max=Infinity,step=EDIT_STEP){if(!step)return THREE.MathUtils.clamp(value,min,max);const steps=Math.max(Math.ceil((min-origin)/step-1e-8),Math.min(Math.floor((max-origin)/step+1e-8),Math.round((value-origin)/step)));return origin+steps*step;}
+export const axisVector=axis=>new THREE.Vector3(axis==='x'?1:0,axis==='y'?1:0,axis==='z'?1:0);
+export function normalizeModel(state){state.textureSize=Math.min(state.textureSize||1024,state.pixelDensity?4096:1024);if(state.pixelDensity)migratePixelSettings(state);else state.gridSize=GRID_SIZES.includes(state.gridSize)?state.gridSize:EDIT_STEP;if(!state.animations)state.animations=[{id:0,name:'Animation 1',frames:state.frames||[]}];delete state.frames;state.animation=Number.isInteger(state.animation)&&state.animations[state.animation]?state.animation:0;state.nextAnimationId=Math.max(Number.isInteger(state.nextAnimationId)?state.nextAnimationId:0,Math.max(...state.animations.map(a=>a.id))+1);state.frame=Math.min(state.frame||0,Math.max(0,state.animations[state.animation].frames.length-1));for(const b of state.boxes){b.size??=[1,1,1];b.axis??='omni';}return state;}
+export function normalFor(b,parent){if(b.normal)return V(b.normal);const n=V(b.b).lengthSq()>1e-10?V(b.b).negate().normalize().applyQuaternion(Q(b.q)).applyQuaternion(Q(parent.q).invert()):V(b.p).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).normalize();const a=n.toArray(),i=a.reduce((best,v,k)=>Math.abs(v)>Math.abs(a[best])?k:best,0);return new THREE.Vector3().setComponent(i,Math.sign(a[i])||1);}
+// Only treat a joint as a face attachment when both endpoints are actually
+// on contacting faces. Imported rigs may intentionally use inset/outside pivots.
+export function contactNormal(b,parent){const n=normalFor(b,parent),i=n.toArray().findIndex(v=>Math.abs(v)>.5),local=n.clone().applyQuaternion(Q(parent.q)).applyQuaternion(Q(b.q).invert()),j=local.toArray().findIndex(v=>Math.abs(v)>.999);if(j<0)return null;const ps=dimensions(parent),bs=dimensions(b);if(Math.abs(b.a[i]-n.getComponent(i)*ps[i]/2)>1e-5||Math.abs(b.b[j]+local.getComponent(j)*bs[j]/2)>1e-5)return null;if(b.a.some((v,k)=>Math.abs(v)>ps[k]/2+1e-5)||b.b.some((v,k)=>Math.abs(v)>bs[k]/2+1e-5))return null;return n;}
+export function constrainedRelative(b,parent,relative){if(!b.axis||b.axis==='omni')return relative.clone();const bind=Q(parent.q).invert().multiply(Q(b.q)),delta=relative.clone().multiply(bind.clone().invert()),axis=axisVector(b.axis);const d=delta.x*axis.x+delta.y*axis.y+delta.z*axis.z;const twist=new THREE.Quaternion(axis.x*d,axis.y*d,axis.z*d,delta.w);if(twist.lengthSq()<1e-10)twist.identity();else twist.normalize();return twist.multiply(bind);}
+export function projectPose(boxes,pose,{constrain=true}={}){const out={},byId=new Map(boxes.map(b=>[b.id,b]));for(const b of boxes){const source=pose[b.id]||b;if(b.parent===null){out[b.id]={p:source.p.slice(),q:source.q.slice()};continue;}const parent=byId.get(b.parent),oldParent=pose[b.parent]||parent,pp=out[b.parent];let relative=Q(oldParent.q).invert().multiply(Q(source.q));if(constrain)relative=constrainedRelative(b,parent,relative);const q=Q(pp.q).multiply(relative).normalize(),p=V(pp.p).add(V(b.a).applyQuaternion(Q(pp.q))).sub(V(b.b).applyQuaternion(q));out[b.id]={p:p.toArray(),q:q.toArray()};}return out;}
+// Apply a rest-shape edit from a fixed drag-start snapshot, preserving joint rotations in every frame.
+export function editShape(base,id,newPosition,newSize){if(newSize.some((v,i)=>Math.abs(v-dimensions(base.boxes.find(b=>b.id===id))[i])>1e-9))return resizeShape(base,id,newPosition,newSize);const state=structuredClone(base),b=state.boxes.find(b=>b.id===id),old=base.boxes.find(b=>b.id===id);b.size=newSize.map(v=>THREE.MathUtils.clamp(v,base.pixelDensity?Math.min(.2,1/base.pixelDensity):.2,12));b.p=newPosition.slice();const byId=new Map(state.boxes.map(b=>[b.id,b]));if(b.parent!==null){const parent=byId.get(b.parent),n=contactNormal(old,parent);b.b=old.b.map((v,k)=>v*b.size[k]/dimensions(old)[k]);const a=V(b.p).add(V(b.b).applyQuaternion(Q(b.q))).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert());if(n){const i=n.toArray().findIndex(v=>Math.abs(v)>.5),ps=dimensions(parent);b.normal=n.toArray();for(let k=0;k<3;k++)a.setComponent(k,k===i?old.a[i]:THREE.MathUtils.clamp(a.getComponent(k),-ps[k]/2,ps[k]/2));}b.a=a.toArray();}
+for(const child of state.boxes){if(child.parent===id){child.a=child.a.map((v,i)=>v*b.size[i]/dimensions(old)[i]);}}
+for(const child of state.boxes){if(child.parent===null)continue;const parent=byId.get(child.parent);child.p=V(parent.p).add(V(child.a).applyQuaternion(Q(parent.q))).sub(V(child.b).applyQuaternion(Q(child.q))).toArray();}
+const rootDelta=state.boxes[0].p.map((v,i)=>v-base.boxes[0].p[i]);for(const frame of allFrames(state)){const root=frame.pose[state.boxes[0].id];root.p=root.p.map((v,i)=>v+rootDelta[i]);frame.pose=projectPose(state.boxes,frame.pose);}
+return state;}
+// Rebind the edited cube against its parent, then carry downstream joints
+// with the scaled parent faces. Child dimensions remain unchanged.
+function resizeShape(base,id,position,size){
+ const state=structuredClone(base),oldById=new Map(base.boxes.map(b=>[b.id,b])),byId=new Map(state.boxes.map(b=>[b.id,b])),edited=byId.get(id);
+ edited.size=size.map(v=>THREE.MathUtils.clamp(v,base.pixelDensity?Math.min(.2,1/base.pixelDensity):.2,12));edited.p=position.slice();
+ for(const child of state.boxes){
+  if(child.parent===null)continue;
+  const old=oldById.get(child.id),parent=byId.get(child.parent),oldParent=oldById.get(child.parent),parentDelta=V(parent.p).sub(V(oldParent.p));
+  if(child.parent===id){
+   child.a=old.a.map((v,i)=>v*edited.size[i]/dimensions(oldParent)[i]);
+   const normal=contactNormal(old,oldParent);
+   if(normal){
+    const axis=normal.toArray().findIndex(v=>Math.abs(v)>.5),tangents=[0,1,2].filter(i=>i!==axis),world=a=>V(a).applyQuaternion(Q(parent.q)).add(V(parent.p)),poly=[[-1,-1],[1,-1],[1,1],[-1,1]].map(sign=>{const a=child.a.slice();tangents.forEach((k,i)=>a[k]=sign[i]*dimensions(parent)[k]/2);return world(a);});
+    child.a=snapOnPlane(world(child.a),normal.clone().applyQuaternion(Q(parent.q)),base.gridSize,poly).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).toArray();
+   }else{
+    const world=V(child.a).applyQuaternion(Q(parent.q)).add(V(parent.p)),normal=normalFor(old,oldParent).applyQuaternion(Q(parent.q));
+    child.a=snapOnPlane(world,normal,base.gridSize).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).toArray();
+   }
+   child.p=V(parent.p).add(V(child.a).applyQuaternion(Q(parent.q))).sub(V(child.b).applyQuaternion(Q(child.q))).toArray();
+   continue;
+  }
+  if(child.id!==id)child.p=V(old.p).add(parentDelta).toArray();
+  if(child.id===id){
+   const n=contactNormal(old,oldParent);
+   if(n){const preferred=V(old.a).applyQuaternion(Q(oldParent.q)).add(V(oldParent.p));fitFaceAttachment(child,parent,n.toArray(),preferred.toArray(),base.gridSize);}
+   else{child.b=old.b.map((v,i)=>v*edited.size[i]/dimensions(old)[i]);child.a=V(child.b).applyQuaternion(Q(child.q)).add(V(child.p)).sub(V(parent.p)).applyQuaternion(Q(parent.q).invert()).toArray();}
+
+  }
+ }
+ const rootDelta=state.boxes[0].p.map((v,i)=>v-base.boxes[0].p[i]);for(const frame of allFrames(state)){const root=frame.pose[state.boxes[0].id];root.p=root.p.map((v,i)=>v+rootDelta[i]);frame.pose=projectPose(state.boxes,frame.pose);}
+ return state;
+}
+export function mirroredSamples(point,normal,origin,rotation,axes){const inverse=rotation.clone().invert(),p=point.clone().sub(origin).applyQuaternion(inverse),n=normal.clone().applyQuaternion(inverse);let samples=[{p,n}];for(const axis of ['x','y','z'])if(axes[axis]){const index='xyz'.indexOf(axis);samples=samples.concat(samples.map(s=>({p:s.p.clone().setComponent(index,-s.p.getComponent(index)),n:s.n.clone().setComponent(index,-s.n.getComponent(index))})));}return samples.map(s=>({point:s.p.applyQuaternion(rotation).add(origin),normal:s.n.applyQuaternion(rotation)}));}
+export function pastePose(boxes,current,clipboard){const pose=structuredClone(current);for(const b of boxes)if(clipboard[b.id])pose[b.id]=structuredClone(clipboard[b.id]);return projectPose(boxes,pose);}
+export function mirrorSigns(axes){let signs=[[1,1,1]];for(let i=0;i<3;i++)if(axes['xyz'[i]])signs=signs.concat(signs.map(s=>s.map((v,k)=>k===i?-v:v)));return signs;}
+export function reflectPoint(point,origin,rotation,signs){return point.clone().sub(origin).applyQuaternion(rotation.clone().invert()).multiply(V(signs)).applyQuaternion(rotation).add(origin);}
+export function mirrorPartners(boxes,id,axes){const source=boxes.find(b=>b.id===id),root=boxes[0];if(!source||source.parent===null)return [];const partners=[],used=new Set([id]);for(const signs of mirrorSigns(axes).slice(1)){const p=reflectPoint(V(source.p),V(root.p),Q(root.q),signs);const match=boxes.find(b=>!used.has(b.id)&&V(b.p).distanceTo(p)<.015&&dimensions(b).every((v,i)=>Math.abs(v-dimensions(source)[i])<.015));if(match){used.add(match.id);partners.push({id:match.id,signs});}}return partners;}
+export function editMirroredShape(base,id,position,size,axes){let result=editShape(base,id,position,size);const root=base.boxes[0],source=result.boxes.find(b=>b.id===id),editedPosition=V(source.p),editedSize=dimensions(source);for(const partner of mirrorPartners(base.boxes,id,axes)){const p=reflectPoint(editedPosition,V(root.p),Q(root.q),partner.signs);result=editShape(result,partner.id,p.toArray(),editedSize);}return result;}
+// Move a block in whole edit steps along the parent's face, including at its edges.
+export function slidePosition(base,id,desired){
+ const b=base.boxes.find(b=>b.id===id),parent=base.boxes.find(p=>p.id===b.parent),step=base.gridSize??EDIT_STEP;
+ if(!parent)return b.p.map((v,i)=>i===1?v:snap(desired[i],step));
+ const q=Q(parent.q),inverse=q.clone().invert(),n=normalFor(b,parent),axis=n.toArray().findIndex(v=>Math.abs(v)>.5),contact=contactNormal(b,parent),a=V(b.a),target=V(desired).sub(V(b.p)).applyQuaternion(inverse).add(a),tangents=[0,1,2].filter(i=>i!==axis);
+ target.setComponent(axis,a.getComponent(axis));if(contact)for(const i of tangents)target.setComponent(i,THREE.MathUtils.clamp(target.getComponent(i),-dimensions(parent)[i]/2,dimensions(parent)[i]/2));
+ const center=point=>point.sub(a).applyQuaternion(q).add(V(b.p)),poly=contact?[[-1,-1],[1,-1],[1,1],[-1,1]].map(sign=>{const point=a.clone();tangents.forEach((k,i)=>point.setComponent(k,sign[i]*dimensions(parent)[k]/2));return center(point);}):null;
+ return snapOnPlane(center(target),n.applyQuaternion(q),step,poly).toArray();
+}
+// Move both endpoints together on the global grid inside their face overlap.
+export function editJoint(base,id,worldPoint){
+ const state=structuredClone(base),b=state.boxes.find(b=>b.id===id),parent=state.boxes.find(p=>p.id===b.parent);if(!parent)return state;
+ const pq=Q(parent.q),cq=Q(b.q),normal=contactNormal(b,parent),step=base.gridSize??EDIT_STEP;
+ if(normal)fitFaceAttachment(b,parent,normal.toArray(),worldPoint,step);
+ else{
+  const n=normalFor(b,parent).applyQuaternion(pq),old=V(b.a).applyQuaternion(pq).add(V(parent.p)),point=V(worldPoint);point.addScaledVector(n,n.dot(old.clone().sub(point)));
+  const joint=snapOnPlane(point,n,step);b.a=joint.clone().sub(V(parent.p)).applyQuaternion(pq.invert()).toArray();b.b=joint.sub(V(b.p)).applyQuaternion(cq.invert()).toArray();
+ }
+ for(const f of allFrames(state))f.pose=projectPose(state.boxes,f.pose);return state;
+}
+export function editMirroredJoint(base,id,worldPoint,axes){let state=editJoint(base,id,worldPoint);const b=state.boxes.find(b=>b.id===id),parent=state.boxes.find(p=>p.id===b.parent),root=base.boxes[0],point=V(b.a).applyQuaternion(Q(parent.q)).add(V(parent.p));for(const partner of mirrorPartners(base.boxes,id,axes))state=editJoint(state,partner.id,reflectPoint(point,V(root.p),Q(root.q),partner.signs).toArray());return state;}
+// Resolve solver stretch before rendering, traversing from an anchor so it stays fixed.
+export function connectedPose(boxes,pose){const byId=new Map(boxes.map(b=>[b.id,b])),links=new Map(boxes.map(b=>[b.id,[]]));for(const b of boxes)if(b.parent!==null){links.get(b.parent).push(b.id);links.get(b.id).push(b.parent);}const root=boxes.find(b=>b.anchor)||boxes[0],out={[root.id]:structuredClone(pose[root.id]||root)},queue=[root.id];for(let k=0;k<queue.length;k++){const id=queue[k],current=out[id];for(const next of links.get(id)){if(out[next])continue;const backwards=byId.get(id).parent===next,child=byId.get(backwards?id:next),parent=byId.get(child.parent),rawParent=pose[parent.id]||parent,rawChild=pose[child.id]||child;const relative=constrainedRelative(child,parent,Q(rawParent.q).invert().multiply(Q(rawChild.q)));let q,p;if(backwards){q=Q(current.q).multiply(relative.invert());p=V(current.p).add(V(child.b).applyQuaternion(Q(current.q))).sub(V(child.a).applyQuaternion(q));}else{q=Q(current.q).multiply(relative);p=V(current.p).add(V(child.a).applyQuaternion(Q(current.q))).sub(V(child.b).applyQuaternion(q));}out[next]={p:p.toArray(),q:q.normalize().toArray()};queue.push(next);}}return out;}
+
+export const allFrames=state=>state.animations?state.animations.flatMap(a=>a.frames):state.frames||[];
+export const activeFrames=state=>state.animations?state.animations[state.animation||0].frames:state.frames||[];
+export function animationMirrorPairs(boxes,id,axes){let top=boxes.find(b=>b.id===id);if(!top)return [];const byId=new Map(boxes.map(b=>[b.id,b]));const sources=new Set([top.id]);for(const b of boxes)if(sources.has(b.parent))sources.add(b.id);const pairs=[],targets=new Set();for(const b of boxes)if(sources.has(b.id))for(const partner of mirrorPartners(boxes,b.id,axes))if(!sources.has(partner.id)&&!targets.has(partner.id)&&!byId.get(partner.id).anchor){pairs.push({source:b.id,target:partner.id,signs:partner.signs});targets.add(partner.id);}return pairs;}
+export function mirrorAnimationPose(boxes,pose,pairs){if(!pairs.length)return pose;const out=structuredClone(pose),byId=new Map(boxes.map(b=>[b.id,b])),root=boxes[0],rq=Q(pose[root.id].q),restRoot=Q(root.q);for(const {source,target,signs} of pairs){const s=byId.get(source),t=byId.get(target),bind=restRoot.clone().invert().multiply(Q(s.q)),delta=rq.clone().invert().multiply(Q(pose[source].q)).multiply(bind.invert()),det=signs[0]*signs[1]*signs[2];delta.set(delta.x*det*signs[0],delta.y*det*signs[1],delta.z*det*signs[2],delta.w);out[target].q=rq.clone().multiply(delta).multiply(restRoot.clone().invert().multiply(Q(t.q))).normalize().toArray();}return projectPose(boxes,out);}
