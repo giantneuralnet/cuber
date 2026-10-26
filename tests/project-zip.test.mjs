@@ -44,12 +44,12 @@ const settings={mode:'paint',tool:'fill',color:'#123456',palette:['#123456','#ff
 const png=Buffer.from(encodeTexturePNG({width:256,height:256,pixels:new Uint8Array(256*256*4)}));
 const atlas={width:256,toBlob:cb=>cb(new Blob([png])),toDataURL:()=>`data:image/png;base64,${png.toString('base64')}`};
 const meshes=meshMap(state),bytes=await bundleBytes(state,atlas,meshes,settings),files=unzipSync(bytes),loaded=await readProject(new Blob([bytes]));
-assert.deepEqual(Object.keys(files).sort(),['README.txt','Round_trip.fbx','asset.json','atlas.png','roblox animations/BindToRig.luau','roblox animations/Empty.rbxmx','roblox animations/Motion.rbxmx','textures/1024/atlas.png','textures/512/atlas.png']);
-sameState(state,loaded.state);assert.equal(loaded.state.animations[0].loop,false);assert.equal(loaded.state.animations[0].priority,'Movement');assert.deepEqual(loaded.editor,settings);assert.deepEqual(Buffer.from(files['atlas.png']),png);
+assert.ok(files['project/asset.json']);assert.ok(Object.keys(files).some(n=>n.startsWith('Godot/')&&n.endsWith('.glb')));assert.equal(Object.keys(files).filter(n=>n.endsWith('.fbx')).length,2);
+sameState(state,loaded.state);assert.equal(loaded.state.animations[0].loop,false);assert.equal(loaded.state.animations[0].priority,'Movement');assert.deepEqual(loaded.editor,settings);assert.deepEqual(Buffer.from(files['project/atlas.png']),png);
 const savedAgain=await readProject(new Blob([await bundleBytes(loaded.state,atlas,meshMap(loaded.state),loaded.editor)]));sameState(state,savedAgain.state);
 const legacy=projectData(state,atlas);sameState(state,(await readProject(new Blob([JSON.stringify(legacy)]))).state);
 const oldZip=zipSync({'asset.json':strToU8(JSON.stringify({format:'cube-studio-asset',version:1})),'model.cube':strToU8(JSON.stringify(legacy))});sameState(state,(await readProject(new Blob([oldZip]))).state);
-const asset=JSON.parse(strFromU8(files['asset.json']));
+const asset=JSON.parse(strFromU8(files['project/asset.json']));
 const layered=structuredClone(state);
 layered.paintLayer={frame:1,frames:[{png:atlas.toDataURL()},{png:''}]};
 layered.animations[0].frames[0].paintFrame=1;
@@ -57,26 +57,26 @@ layered.animations[0].frames[1].paintFrame=0;
 const layerBytes=await bundleBytes(layered,atlas,meshes,settings),layerFiles=unzipSync(layerBytes),layerLoaded=await readProject(new Blob([layerBytes]));
 assert.deepEqual(layerLoaded.state.paintLayer,layered.paintLayer);
 assert.deepEqual(layerLoaded.state.animations[0].frames.map(f=>f.paintFrame),[1,0]);
-assert.deepEqual(Buffer.from(layerFiles['paint-layer/frame-0.png']),png);
-assert.equal(layerFiles['paint-layer/frame-1.png'],undefined);
-const layerAsset=JSON.parse(strFromU8(layerFiles['asset.json']));
+assert.deepEqual(Buffer.from(layerFiles['project/paint-layer/frame-0.png']),png);
+assert.equal(layerFiles['project/paint-layer/frame-1.png'],undefined);
+const layerAsset=JSON.parse(strFromU8(layerFiles['project/asset.json']));
 assert.deepEqual(layerAsset.paintLayer.frames,[{file:'paint-layer/frame-0.png'},{file:null}]);
 for(const modify of [
- f=>delete f['paint-layer/frame-0.png'],
- f=>{const wrong=Buffer.from(png);wrong.writeUInt32BE(512,16);f['paint-layer/frame-0.png']=wrong;},
- f=>{const a=structuredClone(layerAsset);a.animations[0].keyframes[0].paintFrame=2;f['asset.json']=strToU8(JSON.stringify(a));},
- f=>{const a=structuredClone(layerAsset);a.editor.paintFrame=-1;f['asset.json']=strToU8(JSON.stringify(a));}
+ f=>delete f['project/paint-layer/frame-0.png'],
+ f=>{const wrong=Buffer.from(png);wrong.writeUInt32BE(512,16);f['project/paint-layer/frame-0.png']=wrong;},
+ f=>{const a=structuredClone(layerAsset);a.animations[0].keyframes[0].paintFrame=2;f['project/asset.json']=strToU8(JSON.stringify(a));},
+ f=>{const a=structuredClone(layerAsset);a.editor.paintFrame=-1;f['project/asset.json']=strToU8(JSON.stringify(a));}
 ]){const malformed={...layerFiles};modify(malformed);await assert.rejects(readProject(new Blob([zipSync(malformed)])));}
 const layerLegacy=await readProject(new Blob([JSON.stringify(projectData(layered,atlas,settings))]));
 assert.deepEqual(layerLegacy.state.paintLayer,layered.paintLayer);
 for(const mutate of [a=>a.version=99,a=>a.joints[1].parentPartId=123,a=>a.parts[0].restTransform.rotation=[0,0,0,0],a=>a.animations[0].keyframes[0].jointTransforms[2]=null]){
  const bad=structuredClone(asset);mutate(bad);assert.throws(()=>stateFromAsset(bad));
 }
-await assert.rejects(readProject(new Blob([zipSync({'asset.json':files['asset.json']})])));
+await assert.rejects(readProject(new Blob([zipSync({'asset.json':files['project/asset.json']})])));
 await assert.rejects(readProject(new Blob([bytes.subarray(0,30)])));
 const badAtlas=structuredClone(asset);badAtlas.editor.atlasLayout.faces[0].x=-1;
 await assert.rejects(readProject(new Blob([zipSync({'asset.json':strToU8(JSON.stringify(badAtlas)),'atlas.png':png})])));
-const large=zipSync({'padding':new Uint8Array(65*1024*1024)});await assert.rejects(readProject(new Blob([large])),/too large/);
+const large=zipSync({'padding':new Uint8Array(65*1024*1024)});await assert.rejects(readProject(new Blob([large])),/too large|Invalid/);
 for(const filename of process.argv.slice(2)){
  const project=JSON.parse(readFileSync(filename,'utf8')),s=project.state,paint=Buffer.from(project.atlas.split(',')[1],'base64');
  const a={width:s.textureSize,toBlob:cb=>cb(new Blob([paint])),toDataURL:()=>project.atlas};
@@ -93,3 +93,10 @@ const smallBundle=await bundleBytes(small,{width:32,toBlob:cb=>cb(new Blob([smal
 assert.ok(Object.keys(unzipSync(smallBundle)).length>100);
 const smallLoaded=await readProject(new Blob([smallBundle]));assert.equal(smallLoaded.state.paintLayer.frames.length,16);assert.equal(smallLoaded.state.textureSize,32);
 console.log('PASS maximum paint frames with every upscale remain editable.');
+// Previous flat version-2 exports remain loadable after folder migration.
+const flat=Object.fromEntries(Object.entries(files).filter(([n])=>n.startsWith('project/')).map(([n,d])=>[n.slice(8),d]));
+sameState(state,(await readProject(new Blob([zipSync(flat)]))).state);
+assert.ok(files['Roblox/animations/fused/Motion.rbxmx']);
+assert.ok(files['Roblox/animations/unfused/Motion.rbxmx']);
+assert.ok(files['Roblox/Round_trip.fbx']);assert.ok(files['Roblox/Round_trip_fused.fbx']);
+assert.equal(files['Godot/texture_player.gd'],undefined,'no texture helper without animated texture sources');

@@ -15,7 +15,8 @@ try{
  const state={name:'Import fixture',boxes:[box],nextId:1,textureSize:256,gridSize:.1,atlasLayout:packAtlas([box],256),animations:[{id:0,name:'Still',frames:[]},{id:1,name:'Still',frames:[{time:0,pose,paintFrame:0},{time:1,pose,paintFrame:1}]}],nextAnimationId:2,animation:0,frame:0,paintLayer:{frame:0,frames:[{png:'data:image/png;base64,'+png.toString('base64')},{png:''}]}};
  const geometry=new T.BoxGeometry(),uv=geometry.attributes.uv;
  for(let f=0;f<6;f++){const r=state.atlasLayout.faces[f];for(let v=0;v<4;v++){const i=f*4+v;uv.setXY(i,(r.x+.0001+uv.getX(i)*(r.spanW-.0002))/256,1-(r.y+.0001+(1-uv.getY(i))*(r.spanH-.0002))/256);}}
- const files=unzipSync(await bundleBytes(state,{width:256,toBlob:cb=>cb(new Blob([png]))},new Map([[0,{geometry}]])));
+ const organized=unzipSync(await bundleBytes(state,{width:256,toBlob:cb=>cb(new Blob([png]))},new Map([[0,{geometry}]])));
+ const files=Object.fromEntries(Object.entries(organized).filter(([n])=>n.startsWith('project/')).map(([n,d])=>[n.slice(8),d]));
  for(const [name,text] of Object.entries(robloxImportFiles)){
   assert.equal(files[name],undefined,'legacy native-Part importer is no longer bundled');
   const source=name==='ROBLOX-IMPORT.md'?'IMPORT.md':name.split('/').at(-1);

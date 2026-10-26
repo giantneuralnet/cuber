@@ -1,3 +1,4 @@
+import {godotFiles} from './godot-export.js';
 import {robloxAnimationFiles,animationPriority} from './roblox-animation-export.js?v=2';
 import {materialDescription,materialFiles,materialFrameFiles,materialChannels} from './material-export.js';
 import {AUTO_ATLAS_SIZES,PIXEL_SNAPS} from './pixel-settings.js?v=2';
@@ -5,7 +6,7 @@ import {fbxBytes} from './fbx-export.js?v=9';
 import * as THREE from './vendor/three.module.js';
 import {dimensions,normalizeModel} from './model-ops.js?v=5';
 import {validateLayout,legacyLayout} from './atlas-layout.js?v=3';
-import {projectFileData} from './asset-project.js?v=6';
+import {projectFileData} from './asset-project.js?v=7';
 import {validatePaintLayer,validMaterialPNG} from './paint-layer.js?v=9';
 import {textureUpscales} from './texture-upscale.js?v=2';
 import {zipSync,strToU8} from './vendor/fflate.js';
@@ -69,27 +70,19 @@ export function textureEventData(description){
   return {id:a.id,name:a.name,initialValue:events[0].value,events};
  })};
 }
-function bundleGuide(main,texture,hasPaint,hasUpscales,hasMaterials){return `CUBER
+function bundleGuide(main,texture,hasPaint,hasUpscales,hasMaterials){return `ROBLOX
 
-Import ${main} into Roblox Studio as a mesh model. It contains the rig, animation clips and shared texture. ${texture} is included as a texture fallback. Keep the exported orientation and scale.
-${hasUpscales?'\ntextures/<size>/ contains nearest-neighbor PNG upscales through 1024px, including overlays. To use a larger texture, upload the matching PNG from that folder; UVs stay unchanged. Originals remain at the ZIP root for editing.\n':''}
+Choose ${main} to retain every cube joint, or ${main.slice(0,-4)}_fused.fbx to merge sections that never move relative to one another across any clip. Both retain the model and authored motion. Fully static fused models become one mesh.
 
-roblox animations/ has a .rbxmx KeyframeSequence per clip with matching FBX bones, timing, Loop, Priority and texture markers. Insert them into a Studio folder. Defaults: Loop=true, Priority=Action. To match imported MeshPart containers, paste BindToRig.luau into a ModuleScript and run require(module)(rig, sequencesFolder) once before publishing. The helper matches uniform rig scale using rest-bone spacing. Static fused models have no bones.
+Import your chosen FBX into Roblox Studio as a mesh model. Keep its orientation and scale. ${texture} is the texture fallback.
 
-Publish these KeyframeSequences as Roblox Animation assets and play them with Animator:LoadAnimation() and AnimationTrack. No custom animation player is needed. Fuse static joints merges rigid sections across every clip; fully static models have no bones or motion tracks.
+Use animations/unfused/ for the original FBX and animations/fused/ for the fused FBX. Each folder has matching .rbxmx KeyframeSequences with timing, pose hierarchy, loop, priority and CuberTexture markers. Run its BindToRig.luau helper once against the imported rig and sequences before publishing. Publish sequences as animation assets and use Animator:LoadAnimation(). No custom motion runtime is needed.
+${hasUpscales?'\ntextures/<size>/ provides nearest-neighbor upscales through 1024px. UVs stay unchanged.\n':''}
+${hasMaterials?'\nAssign the color atlas to SurfaceAppearance.ColorMap, emissive-mask.png to EmissiveMaskContent (white tint, strength 1.5), and metalness.png to MetalnessMap when present. Set maps in Studio; FBX does not assign these Roblox-specific properties. materials/ contains composited masks for overlay frames.\n':''}
+${hasPaint?'\ntexture-events.json lists CuberTexture marker times and frame values. -1 means Base, 0 means the first overlay. Markers are in the .rbxmx files, not the FBXs. Listen with AnimationTrack:GetMarkerReachedSignal("CuberTexture"). Composite each overlay over atlas.png and upload each resulting atlas once; switch TextureID or preconfigured SurfaceAppearance instances. Initialize the first texture at playback start and loop restart.\n':''}
 
-Open this ZIP in Cuber to resume editing. asset.json, atlas.png and any paint-layer PNGs preserve the original editable cubes.
-${hasMaterials?`
-MATERIAL MAPS
-Assign the color atlas to SurfaceAppearance.ColorMap in Roblox Studio. Upload emissive-mask.png to EmissiveMaskContent (white tint, EmissiveStrength 1.5) and metalness.png to MetalnessMap when present. These grayscale maps share the color atlas UVs. Set these in Studio; do not assume FBX assigns them. Black is zero, white is full. Optional BloomEffect adds a halo; emission is not a light source. The editor previews metal pixels with lower roughness; use a RoughnessMap to tune that finish in your game's lighting.
-The materials/ folder contains ready-to-upload composited masks for overlay frames. texture-events.json lists the matching material map for each frame. Prepare a SurfaceAppearance for each used frame in Studio, with its color and mask assets already assigned. These map properties require edit-time setup; at runtime, swap preconfigured SurfaceAppearance instances on the texture marker rather than assigning new emissive-mask IDs. Retain the base appearance for Base. paint-material/ and paint-layer/ files preserve editable masks, including alpha, for reopening in Cuber.
-`:''}
-${hasPaint?`
-TEXTURE EVENTS
-texture-events.json lists CuberTexture marker times and string values for each animation. Values are zero-based overlay frame indices (0 is UI overlay 1); -1 selects Base; a null overlay means the base texture alone. Markers are embedded in .rbxmx, not FBX.
-Publish the KeyframeSequence to retain markers. For FBX clips, add the listed markers manually. Keep motion playback in Animator. Your script listens with AnimationTrack:GetMarkerReachedSignal("CuberTexture") and switches to the matching texture. Initialize initialValue on playback start and loop restart.
-With the standard MeshPart texture, composite each used overlay over atlas.png and upload each resulting atlas once, then swap TextureID (or SurfaceAppearance ColorMap). If your renderer already supports a separate overlay, switch that overlay image instead. Texture-only static models have no FBX motion track to attach markers to.
-`:''}`;}
+Open the original whole ZIP in Cuber to resume editing; project/ contains its editable data.
+`;}
 export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas){
   state=structuredClone(state);settings=structuredClone(settings);
   const description=assetDescription(state,meshes,atlas.width,settings);
@@ -106,13 +99,18 @@ export async function bundleBytes(state,atlas,meshes,settings={},fbxAtlas=atlas)
   };
   const masks=materialFiles(state,atlas.width);Object.assign(textures,masks.textures);
   const upscales=textureUpscales(textures,atlas.width);
+  const prefix=(folder,files)=>Object.fromEntries(Object.entries(files).map(([name,data])=>[folder+'/'+name,data]));
+  const animations=fused=>Object.fromEntries(Object.entries(robloxAnimationFiles(description,{fuseStaticJoints:fused},events)).map(([name,data])=>[name.replace('roblox animations/',''),data]));
+  const stem=main.slice(0,-4);
   return zipSync({
-    'asset.json':strToU8(JSON.stringify(description,null,2)),
-    ...textures,...upscales,...masks.sources,
-    ...robloxAnimationFiles(description,{fuseStaticJoints:settings.fuseStaticJoints!==false},events),
-    [main]:fbxBytes(description,fbxPng,{textureFilename,fuseStaticJoints:settings.fuseStaticJoints!==false}),
-    'README.txt':strToU8(bundleGuide(main,textureFilename,!!events,Object.keys(upscales).length>0,!!description.materials)),
-    ...(events?{'texture-events.json':strToU8(JSON.stringify(events,null,2))}:{})
+    ...prefix('project',{'asset.json':strToU8(JSON.stringify(description,null,2)),...textures,...masks.sources}),
+    ...prefix('Roblox',{...textures,...upscales,[main]:fbxBytes(description,fbxPng,{textureFilename,fuseStaticJoints:false}),[stem+'_fused.fbx']:fbxBytes(description,fbxPng,{textureFilename,fuseStaticJoints:true}),
+      'README.txt':strToU8(bundleGuide(main,textureFilename,!!events,Object.keys(upscales).length>0,!!description.materials)),
+      ...(events?{'texture-events.json':strToU8(JSON.stringify(events,null,2))}:{})}),
+    ...prefix('Roblox/animations/unfused',animations(false)),
+    ...prefix('Roblox/animations/fused',animations(true)),
+    ...godotFiles(description,png,fbxPng,textures,events,stem),
+    'README.txt':strToU8('CUBER\n\nOpen this whole ZIP in Cuber to continue editing.\nproject/ preserves editable cubes, paint and keyframes.\nRoblox/ contains unfused and fused FBX files, matching animation folders, textures and import instructions.\nGodot/ contains a self-contained GLB with native animations and import instructions.\n')
   },{level:6});
 }
 export async function downloadBundle(state,atlas,meshes,settings={},fbxAtlas=atlas){triggerDownload(await bundleBytes(state,atlas,meshes,settings,fbxAtlas),exportFilename(state)+'.zip','application/zip');}

@@ -62,17 +62,20 @@ export function stateFromAsset(asset){
 }
 
 export async function projectFileData(file){
-  if(file.size>30*1024*1024)throw Error('Project is too large');
+  if(file.size>128*1024*1024)throw Error('Project is too large');
   const bytes=new Uint8Array(await file.arrayBuffer());
   if(bytes[0]!==0x50||bytes[1]!==0x4b)return JSON.parse(strFromU8(bytes));
   let total=0,count=0;const names=new Set();
-  const files=unzipSync(bytes,{filter:entry=>{
+  const extracted=unzipSync(bytes,{filter:entry=>{
     total+=entry.originalSize;
     // Color plus two material channels, overlay sources and upscales.
-    if(++count>512||total>64*1024*1024)throw Error('Project ZIP is too large');
-    if(!['asset.json','atlas.png','model.cube'].includes(entry.name)&&!/^paint-layer\/frame-\d+(?:-(?:emission|metalness))?\.png$/.test(entry.name)&&!/^paint-material\/base-(?:emission|metalness)\.png$/.test(entry.name))return false;
+    if(++count>2048||total>256*1024*1024)throw Error('Project ZIP is too large');
+    const name=entry.name.replace(/^project\//,'');
+    if(!['asset.json','atlas.png','model.cube'].includes(name)&&!/^paint-layer\/frame-\d+(?:-(?:emission|metalness))?\.png$/.test(name)&&!/^paint-material\/base-(?:emission|metalness)\.png$/.test(name))return false;
     if(names.has(entry.name))fail();names.add(entry.name);return true;
   }});
+  const modern=!!extracted['project/asset.json'];
+  const files=Object.fromEntries(Object.entries(extracted).filter(([name])=>modern?name.startsWith('project/'):!name.startsWith('project/')).map(([name,data])=>[modern?name.slice(8):name,data]));
   if(!files['asset.json'])fail();
   const asset=JSON.parse(strFromU8(files['asset.json']));
   // Previously exported bundles remain editable through their legacy backup.
